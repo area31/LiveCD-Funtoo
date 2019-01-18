@@ -1,0 +1,54 @@
+--- init.bkp	2019-01-17 21:48:41.715000000 -0200
++++ init	2019-01-17 22:47:35.603000000 -0200
+@@ -1132,7 +1132,7 @@
+     fi
+ }
+ 
+-sysresccd_stage3_normal() # "backstore" + "aufs" + "mount --move"
++sysresccd_stage3_normal() # "backstore" + "overlay" + "mount --move"
+ {
+     AUFSEXTRA=""
+     MNTSEXTRA=""
+@@ -1216,23 +1216,26 @@
+         sysresccd_panic "Fatal error: cannot mount tmpfs on ${BACKSTORE_MEM}"
+     fi
+ 
+-    # 4. create the aufs filesystem
+-    if ! grep -q aufs /proc/filesystems
++    # 4. create the overlay filesystem
++    if ! grep -q overlay /proc/filesystems
+     then
+-        sysresccd_panic "Fatal error: aufs filesystem not supported by the kernel."
++        sysresccd_panic "Fatal error: overlay filesystem not supported by the kernel."
+     fi
+-    if mount -t aufs none ${NEWROOT} -o dirs=${BACKSTORE_MEM}=rw:${AUFSEXTRA}${SQUASHFSMNT}=ro -o noatime
++    #if mount -t aufs none ${NEWROOT} -o dirs=${BACKSTORE_MEM}=rw:${AUFSEXTRA}${SQUASHFSMNT}=ro -o noatime
++	mkdir -p ${BACKSTORE_MEM}/.upper ${BACKSTORE_MEM}/.work
++	if mount -t overlay overlay ${NEWROOT} -o rw,relatime,lowerdir=${SQUASHFSMNT},upperdir=${BACKSTORE_MEM}/.upper,workdir=${BACKSTORE_MEM}/.work,index=off
++
+     then
+-        good_msg "The aufs filesystem has been created"
++        good_msg "The overlay filesystem has been created"
+     else
+-        sysresccd_panic "Fatal error: cannot mount the aufs filesystem."
++        sysresccd_panic "Fatal error: cannot mount the overlay filesystem."
+     fi
+ 
+     # 5. copy cached autorun scripts
+     autoruns="$(ls -d ${CACHEDIR}/autorun* 2>/dev/null)"
+     [ "$autoruns" != "" ] && cp $autoruns ${NEWROOT}/var/autorun/cdrom
+ 
+-    # 6. create the aufs filesystem for /tftpboot
++    # 6. create the overlay filesystem for /tftpboot
+     TFTPBOOT_MEM='/tftpmem'
+     TFTPBOOT_DIR='/tftpboot'
+     mkdir -p ${TFTPBOOT_MEM}
+@@ -1467,7 +1470,7 @@
+     esac
+ }
+ 
+-sysresccd_stage3() # ${NEWROOT}=aufs
++sysresccd_stage3() # ${NEWROOT}=overlay
+ {
+     case "${STAGE3}" in
+         rootsys)
