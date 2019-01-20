@@ -40,3 +40,9 @@ https://www.funtoo.org/Make_your_own_RescueCD_based_on_Funtoo_Linux_1.3_prime
 ~~~
 https://www.area31.net.br/wiki/RescueCD_-_Personalize_o_LiveCD_e_compile_um_novo_kernel
 ~~~
+
+# Changelog 5.0:
+
+~~~
+https://www.funtoo.org/index.php?title=Make_your_own_RescueCD_based_on_Funtoo_Linux&type=revision&diff=26612&oldid=25808
+~~~
