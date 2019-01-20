@@ -32,7 +32,7 @@ https://area31.net.br/wiki/RescueCD_oficial
 # 3- Make your own RescueCD based on Funtoo Linux:
 
 ~~~~
-https://www.funtoo.org/Make_your_own_RescueCD_based_on_Funtoo_Linux_1.3_prime
+https://www.funtoo.org/Make_your_own_RescueCD_based_on_Funtoo_Linux
 ~~~~
 
 # 4- Personalize your LiveCD:
