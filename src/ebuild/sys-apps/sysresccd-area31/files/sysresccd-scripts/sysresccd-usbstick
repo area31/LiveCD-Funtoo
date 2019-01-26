@@ -1,7 +1,5 @@
 #!/bin/bash
-# Project page: http://www.system-rescue-cd.org/
-# (C) 2010 Francois Dupoux
-# This scipt is available under the GPL-2 license
+# Copyright 2019 Area31 Hackerspace
 
 ###############################################################################
 
@@ -11,7 +9,7 @@ MINSIZEMB=512
 PROGIMG="${0}"
 PROGLOC="$(dirname ${0})"
 CDFILES=('sysrcd.dat' 'sysrcd.md5' 'version' '???linux/initram.igz' 
-	'???linux/rescue32' '???linux/rescue64' '???linux/f1boot.msg'
+	'???linux/rescue64' '???linux/f1boot.msg'
 	'???linux/???linux.bin' '???linux/???linux.cfg')
 
 ###############################################################################

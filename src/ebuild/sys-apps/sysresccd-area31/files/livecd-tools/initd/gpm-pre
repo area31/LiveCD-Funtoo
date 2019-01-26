@@ -1,0 +1,32 @@
+#!/sbin/openrc-run
+# Copyright 2019 Area31 Hackerspace
+# $Header: $
+
+depend() {
+	before gpm
+	need hwsetup
+}
+
+start() {
+	[ -f /etc/sysconfig/gentoo ] && source /etc/sysconfig/gentoo
+	[ -f /etc/sysconfig/mouse ] && source /etc/sysconfig/mouse
+	if [ -z "${MOUSE_DEVICE}" ]; then
+		ewarn "No mouse detected. GPM will not be started."
+		return 0
+	fi
+	einfo "Mouse is ${HILITE}${MOUSE_FULLNAME}${NORMAL} at ${HILITE}${MOUSE_DEVICE}${NORMAL} ..."
+
+	if [ $(grep "#MOUSE=${MOUSETYPE}" /etc/conf.d/gpm) ]; then
+		sed -i "\@MOUSE=${MOUSETYPE}@s@^#@@" /etc/conf.d/gpm
+	else
+		echo "MOUSE=${MOUSETYPE}" >>/etc/conf.d/gpm
+	fi
+
+	if [ $(grep "#MOUSEDEV=${DEVICE}" /etc/conf.d/gpm) ]; then
+		sed -i "\@MOUSEDEV=${DEVICE}@s@^#@@" /etc/conf.d/gpm
+	else
+		echo "MOUSEDEV=${DEVICE}" >>/etc/conf.d/gpm
+	fi
+}
+
+# vim: ft=gentoo-init-d:

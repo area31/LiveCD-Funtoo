@@ -1,0 +1,601 @@
+#!/sbin/openrc-run
+
+# This script is used by Funtoo Linux LiveCD to start certain services and to
+# ensure a sane setup for a CD-based boot.
+
+get_config() {
+	CMDLINE="$(cat /proc/cmdline)"
+
+	for x in ${CMDLINE} ; do
+		case "${x}" in
+			# We put nodetect first, so we can override it with do* commands
+			nodetect)
+				ACPI="no"
+				ALSA="no"
+				APM="no"
+				COLDPLUG="no"
+				DETECT="no"
+				DMRAID="no"
+				FIREWIRE="no"
+				GPM="no"
+				LVM="no"
+				MDADM="no"
+				NET="no"
+				NFS="no"
+				PCMCIA="no"
+				PATA="no"
+				SATA="no"
+				SCSI="no"
+				USB="no"
+				X11="no"
+			;;
+			noapm)
+				APM="no"
+			;;
+			nocoldplug|nohotplug)
+				COLDPLUG="no"
+			;;
+			nodhcp)
+				DHCP="no"
+			;;
+			nodmraid)
+				DMRAID="no"
+			;;
+			nofirewire)
+				FIREWIRE="no"
+			;;
+			nogpm)
+				GPM="no"
+			;;
+			noload=*)
+				NOLOAD="$*"
+			;;
+			nolvm|nolvm2)
+				LVM="no"
+			;;
+			nomdadm)
+				MDADM="no"
+			;;
+			nonet)
+				NET="no"
+			;;
+			nonfs)
+				NFS="no"
+			;;
+			nopata)
+				PATA="no"
+			;;
+			nopcmcia)
+				PCMCIA="no"
+			;;
+			nosata)
+				SATA="no"
+			;;
+			noscsi)
+				SCSI="no"
+			;;
+			nosshd)
+				SSHD="no"
+			;;
+			nosound)
+				ALSA="no"
+			;;
+			nousb)
+				USB="no"
+			;;
+			nox)
+				X11="no"
+			;;
+			acpi\=on|acpi\=force)
+				ACPI="yes"
+				APM="no"
+			;;
+			brltty=*)
+				BRLTTY="yes"
+				X11="no"
+			;;
+			ide\=nodma)
+				IDEDMA="no"
+			;;
+			doapm)
+				ACPI="no"
+				APM="yes"
+			;;
+			docoldplug|dohotplug)
+				COLDPLUG="yes"
+			;;
+			dodhcp)
+				DHCP="yes"
+			;;
+			dodmraid)
+				DMRAID="yes"
+			;;
+			dofirewire)
+				FIREWIRE="yes"
+			;;
+			dogpm)
+				GPM="yes"
+			;;
+			dolvm|dolvm2)
+				LVM="yes"
+			;;
+			domdadm)
+				MDADM="yes"
+			;;
+			donet)
+				NET="yes"
+			;;
+			donfs)
+				NFS="yes"
+			;;
+			dopata)
+				PATA="yes"
+			;;
+			dopcmcia)
+				PCMCIA="yes"
+			;;
+			dosata)
+				SATA="yes"
+			;;
+			doscsi)
+				SCSI="yes"
+			;;
+			dosshd)
+				SSHD="yes"
+			;;
+			dosound)
+				SOUND="yes"
+			;;
+			dousb)
+				USE="yes"
+			;;
+			dox)
+				X11="yes"
+			;;
+			passwd=*)
+				PASSWD="no"
+				PASSWORD="${x#*=}"
+			;;
+			speakup.synth=*)
+				SPEAKUP="yes"
+				SPEAKUP_MODULE="speakup_${x#*=}"
+				X11="no"
+			;;
+			speakup_*.{ser,port}=*)
+				SPEAKUP_OPTIONS="${SPEAKUP_OPTIONS} ${x#*.}"
+			;;
+		esac
+	done
+}
+
+# Checks whether a service will be started by autoconfig.
+# Usage: check_svc var service [service_alternative]
+check_svc() {
+	if yesno "${1}"
+	then
+		if rc-service -e "${2}"
+		then
+			echo "${2}"
+		elif [ -n "${3}" ] && rc-service -e "${3}"
+		then
+			echo "${3}"
+		fi
+	fi
+}
+
+# Prints an ordered list of services that will be started by autoconfig.
+list_services() {
+	get_config
+	# Must not print anything here
+	if yesno "${DETECT}"
+	then
+		local arch="$(uname -m)"
+
+		case ${arch} in
+			mips*)
+				ACPI="no"
+				APM="no"
+				IDEDMA="no"
+			;;
+			i?86|x86_64)
+				:
+			;;
+			alpha)
+				ACPI="no"
+				APM="no"
+			;;
+			sparc*)
+				ACPI="no"
+				APM="no"
+			;;
+			powerpc*)
+				ACPI="no"
+				APM="no"
+			;;
+			ia64)
+				APM="no"
+			;;
+		esac
+	fi
+
+	local svcs="$(check_svc ${ACPI} acpid)"
+	svcs="${svcs} $(check_svc ${ALSA} alsasound)"
+	svcs="${svcs} $(check_svc ${ALSA} unmute)"
+	if [ "${SPEAKUP_MODULE}" = "speakup_soft" ]  && rc-service -e espeakup
+	then
+		svcs="${svcs} espeakup"
+	fi
+	svcs="${svcs} $(check_svc ${APM} apmd)"
+	svcs="${svcs} $(check_svc ${BRLTTY} brltty)"
+	svcs="${svcs} $(check_svc ${COLDPLUG} coldplug hotplug)"
+	if yesno "$COLDPLUG" && ! rc-service -e coldplug && ! rc-service -e hotplug
+	then
+		echo hwsetup
+	fi
+	svcs="${svcs} $(check_svc ${GPM} gpm-pre)"
+	svcs="${svcs} $(check_svc ${GPM} gpm)"
+	svcs="${svcs} $(check_svc ${IDEDMA} hdparm)"
+	svcs="${svcs} $(check_svc ${NFS} nfsclient)"
+	svcs="${svcs} $(check_svc ${PASSWD} pwgen)"
+	svcs="${svcs} $(check_svc ${PCMCIA} pcmcia)"
+	svcs="${svcs} $(check_svc ${SSHD} sshd)"
+	#svcs="${svcs} $(check_svc ${X11} xdm)"
+
+	### TODO: make this baselayout-2 compatible
+	### TODO: make these checks accurate using service dependencies
+
+	echo ${svcs}
+}
+
+depend() {
+	before net
+
+	get_config
+	if yesno "${SPEAKUP}"
+	then
+		modprobe ${SPEAKUP_MODULE} ${SPEAKUP_OPTIONS} > /dev/null 2>&1
+	fi
+
+	need modules $(list_services)
+}
+
+get_info() {
+	local tmp
+
+	if [ ! -z "${1}" -a ! -z "${2}" ]
+	then
+		tmp=$(grep "^$1[[:space:]]\+:" /proc/cpuinfo | head -n 1 | cut -d" " -f3-)
+		eval "${2}='${tmp}'"
+	fi
+}
+
+detect_mips() {
+	get_info "cpu model" cpuinfo
+	get_info "system type" machinfo
+	cpuinfo="${cpuinfo%%  FPU*}"
+
+	case "${machinfo}" in
+		"SGI Indigo2")
+			case "${cpuinfo}" in
+				R4*)
+					machinfo="SGI Indigo2" # I2 R4x00
+				;;
+				R8*)
+					machinfo="SGI Indigo2 Power" # I2 R8000
+				;;
+				R10*)
+					machinfo="SGI Indigo2 Impact" # I2 R10000
+				;;
+			esac
+		;;
+	esac
+
+	PC="Detected an ${machinfo} w/ ${numcpu} ${cpuinfo} CPU(s)"
+}
+
+detect_x86_amd64_ia64() {
+	if [ "${1}" = "ia64" ]
+	then
+		get_info "family" cpuinfo
+	else
+		get_info "model name" cpuinfo
+	fi
+	get_info "cpu MHz" mhz
+	mhz="${mhz%%.*}MHz"
+
+	PC="Detected ${numcpu} ${cpuinfo} CPU(s) @ ${mhz}"
+}
+
+detect_alpha() {
+	get_info "platform string" machinfo
+	get_info "cpu" cpuinfo1
+	get_info "cpu model" cpuinfo2
+	get_info "cpus detected" numcpu
+
+	PC="Detected ${numcpu} ${cpuinfo1} ${cpuinfo2} CPU(s) in a ${machinfo} system"
+}
+
+detect_ppc() {
+	get_info "cpu" cpuinfo
+	get_info "clock" mhz
+	get_info "detected as" machinfo
+	machinfo="${machinfo##*\(}"
+	machinfo="${machinfo%%\)*}"
+
+	local machtype=""
+
+	case "${machinfo}" in
+		"CHRP Pegasos2")
+			machtype="Pegasos 2"
+			;;
+		"CHRP IBM,9124-720")
+			machtype="IBM OP720"
+			;;
+		"iBook 2 rev. 2")
+			machtype="Apple iBook G3"
+			;;
+		"iMac G5"*)
+			machtype="Apple iMac G5"
+			;;
+		"MPC8241")
+			machtype="Kurobox"
+			;;
+		"PowerMac G5")
+			machtype="Apple PowerMac G5"
+			;;
+		"PowerMac G5 Dual Core")
+			machtype="Apple PowerMac G5 Dual Core"
+			;;
+		"PowerMac G4 AGP Graphics")
+			machtype="Apple PowerMac G4"
+			;;
+		"PowerBook Titanium"|"PowerBook G4 15\"")
+			machtype="Apple Powerbook G4"
+			;;
+		"Unknown Intrepid-based")
+			machtype="Apple Mac-Mini"
+			;;
+		*)
+			machtype="Unknown PPC System"
+			;;
+	esac
+
+	PC="Detected a(n) ${machtype} w/ ${numcpu} ${cpuinfo} CPU(s)"
+}
+
+detect_sparc() {
+	get_info "cpu" cpuinfo
+	get_info "ncpus active" numcpu
+	get_info "ncpus probed" numprobed
+
+	PC="Detected ${numcpu} active ${cpuinfo} CPU(s) of ${numprobed} total"
+}
+
+detect_netdevices() {
+	for dev in /sys/class/net/*; do
+		n="$(basename $dev)"
+		case "$n" in
+		lo|sit0) continue ;;
+		*) echo $n
+		esac
+	done
+	return 0
+}
+
+write_emerge_default_opts() {
+	printf "\n# EMERGE_DEFAULT_OPTS is set automatically by livecd-tools autoconfig during first live boot.\n" >> $1
+	printf "# This should be equal to number of processors, see \"man emerge\" for details.\n" >> $1
+	printf "EMERGE_DEFAULT_OPTS=\"\${EMERGE_DEFAULT_OPTS} --jobs=${numcpu} --load-average=${numcpu}\"\n" >> $1
+}
+
+start() {
+	ebegin "Starting autoconfig"
+	echo "0" > /proc/sys/kernel/printk
+	get_config
+
+	local numcpu="$(grep -c '^processor[[:space:]]\+:' /proc/cpuinfo)"
+	eindent
+	ebegin "Setting sane defaults in /etc/portage/make.conf"
+	if [ -f "/etc/portage/make.conf" ] && checkpath -W /etc/portage/make.conf; then
+		if ! grep -q 'EMERGE_DEFAULT_OPTS=.*--jobs' /etc/portage/make.conf; then
+			write_emerge_default_opts /etc/portage/make.conf
+		fi
+	elif [ ! -f "/etc/portage/make.conf" ] && [ ! -d "/etc/portage/make.conf" ] && checkpath -W /etc/portage; then
+		write_emerge_default_opts /etc/portage/make.conf
+	elif [ -d "/etc/portage/make.conf" ]; then
+		if [ ! -f "/etc/portage/make.conf/livecd-tools-autoconfig" ] && checkpath -W /etc/portage/make.conf/livecd-tools-autoconfig; then
+			write_emerge_default_opts /etc/portage/make.conf/livecd-tools-autoconfig
+		fi
+	else
+		false
+	fi
+	eend $? "Unable to write to /etc/portage/make.conf"
+	eoutdent
+
+	if yesno "${DETECT}"
+	then
+		eindent
+		ebegin "Hardware detection started"
+			local arch="$(uname -m)"
+
+			case ${arch} in
+				mips*)
+					detect_mips
+					ACPI="no"
+					APM="no"
+					IDEDMA="no"
+				;;
+				i?86|x86_64)
+					detect_x86_amd64_ia64
+				;;
+				alpha)
+					detect_alpha
+					ACPI="no"
+					APM="no"
+				;;
+				sparc*)
+					detect_sparc
+					ACPI="no"
+					APM="no"
+				;;
+				powerpc*)
+					detect_ppc
+					ACPI="no"
+					APM="no"
+				;;
+				ia64)
+					detect_x86_amd64_ia64 "ia64"
+					APM="no"
+				;;
+				*)
+					PC=
+				;;
+			esac
+			[ -n "${PC}" ] && einfo "${PC}"
+		eend
+		eoutdent
+	else
+		ewarn "Hardware detection disabled via cmdline ..."
+	fi
+
+	if ! yesno "${COLDPLUG}"
+	then
+		ewarn "Hotplug/Coldplug disabled via cmdline ..."
+	fi
+
+	if yesno "${APM}"
+	then
+		modprobe apm power_off=1 >/dev/null 2>&1 && \
+			einfo "APM BIOS found, power management functions enabled ..."
+		if ! service_started apmd
+		then
+			rc-service -i apmd start
+		fi
+	else
+		einfo "Not Loading APM Bios support ..."
+	fi
+
+	if yesno "${ACPI}"
+	then
+		modprobe processor >/dev/null 2>&1 && \
+			ebegin "ACPI power management functions enabled" && \
+			modprobe thermal >/dev/null
+		modprobe fan >/dev/null 2>&1
+		modprobe button >/dev/null 2>&1
+		modprobe battery >/dev/null 2>&1
+		modprobe ac >/dev/null 2>&1
+		modprobe thermal >/dev/null 2>&1
+		modprobe video >/dev/null 2>&1
+		modprobe dock >/dev/null 2>&1
+		if ! service_started acpid
+		then
+			rc-service -i acpid start
+		fi
+		eend
+	else
+		einfo "Not Loading ACPI support ..."
+	fi
+
+	if ! yesno "${IDEDMA}"
+	then
+		ewarn "Disabling IDE DMA support ..."
+	fi
+
+	if ! yesno "${PCMCIA}"
+	then
+		ewarn "PCMCIA disabled via cmdline ..."
+	fi
+
+	if ! yesno "${DHCP}"
+	then
+		sed -i -e '/^ifconfig_eth.*dhcp.*/ s/^/#/' \
+			-e '/^iface_eth.*dhcp.*/ s/^/#/' \
+			-e '/^config_eth.*dhcp.*/ s/^/#/' \
+			/etc/conf.d/net
+		for i in `seq 0 4`
+		do
+			echo "config_eth${i}=\"null\"" >> /etc/conf.d/net
+		done
+		ewarn "Skipping DHCP broadcast ..."
+	fi
+
+	# Read in what hwsetup has found
+	[ -f /etc/sysconfig/gentoo ] && source /etc/sysconfig/gentoo
+
+	# Mouse
+	# FIXME: If MOUSE_DEVICE is empty, we actually do not want to do anything, not even start gpm.
+	if [ -n "${MOUSE_DEVICE}" ]
+	then
+		:
+		# Migrated to autoconfig-gpm-pre
+	fi
+
+	if yesno "${DETECT}"
+	then
+		NETDEVICES="$(detect_netdevices)"
+	else
+		DHCP="no"
+	fi
+
+	if [ -n "${NETDEVICES}" ]
+	then
+		if yesno "${DHCP}"
+		then
+			einfo "DHCP broadcasting for IP on all detected interfaces ..."
+			if [ -f /var/run/dhcpcd.pid ]
+			then
+				kill $(cat /var/run/dhcpcd.pid)
+				sleep 2
+			fi
+			dhcpcd -n -h $(hostname)
+		fi
+		if ! yesno "${PASSWD}"
+		then
+			chmod og-r /proc/cmdline # Try to secure the kernel parameters per bug #610840
+			echo "root:${PASSWORD}" | chpasswd  > /dev/null 2>&1
+		fi
+		if yesno "${SSHD}"
+		then
+			# If we have passwd= on the command line, we do not run pwgen and we
+			# set the root password to PASSWORD.
+			if yesno "${PASSWD}"
+			then
+				ewarn "WARNING: You are starting sshd with a scrambled root password!!!"
+				ewarn "WARNING: You need to set a root password to be able to login remotely."
+			fi
+		fi
+	else
+		ewarn "No Network device auto detected ..."
+	fi
+
+	if yesno "${ALSA}"
+	then
+		if [ -n "${SOUND_FULLNAME}" -o -n "${SOUND_DRIVER}" ]
+		then
+			einfo "Soundcard:  "
+
+			[ -n "${SOUND_FULLNAME}" ] \
+				&& einfo "              ${WARN}${SOUND_FULLNAME}  "
+			[ -n "${SOUND_DRIVER}" ] \
+				&& einfo "              driver = ${SOUND_DRIVER}"
+		fi
+	else
+		ewarn "Skipping ALSA detection as requested on command line ..."
+	fi
+
+	[ -n "${XDESC}" ] && einfo "VideoCard:   ${HILITE}${XDESC}${NORMAL}"
+
+	killall hwsetup 2>/dev/null
+	echo "6" > /proc/sys/kernel/printk
+
+	if ! yesno "${X11}"
+	then
+		#rc-service xdm stop
+		splash_manager -c set -t livecd-10 -m v > /dev/null 2>&1
+		reset
+		chvt 1
+	fi
+	eend $?
+}
+
+# vim: ts=4

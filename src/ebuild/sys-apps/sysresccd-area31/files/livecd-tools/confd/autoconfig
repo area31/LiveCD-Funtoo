@@ -1,0 +1,30 @@
+#
+# These are the default settings for autoconfig.
+# They determine which functions will be automatically started on our
+# live cds.
+# These settings can all be overridden from the boot command line.
+#
+ACPI="yes"
+ALSA="yes"
+APM="no"
+BRLTTY="no"
+COLDPLUG="yes"
+DETECT="yes"
+DHCP="yes"
+DMRAID="yes"
+FIREWIRE="yes"
+GPM="yes"
+IDEDMA="yes"
+LVM="no"
+MDADM="yes"
+NET="yes"
+NFS="no"
+PASSWD="yes"
+PATA="yes"
+PCMCIA="yes"
+SATA="yes"
+SCSI="no"
+SPEAKUP="no"
+SSHD="no"
+USB="yes"
+X11="yes"

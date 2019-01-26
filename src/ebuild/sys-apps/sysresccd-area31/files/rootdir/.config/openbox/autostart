@@ -1,0 +1,17 @@
+# Programs that will run after Openbox has started
+
+# Set the wallpaper
+hsetroot /etc/area31/Bg-blur-area31_1920_x_1200.png &
+
+# Run a Composite manager
+#xcompmgr -c -t-5 -l-5 -r4.2 -o.55 &
+
+# SCIM support (for typing non-english characters)
+#scim -d &
+
+# A panel for good times
+#fbpanel &
+#
+
+# cmdline
+/usr/bin/termite &

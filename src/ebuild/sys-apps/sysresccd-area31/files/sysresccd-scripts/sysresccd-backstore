@@ -1,8 +1,5 @@
 #!/bin/bash
-# Project page: http://www.system-rescue-cd.org/
-# By Francois Dupoux
-# (C) 2003-2008 Francois Dupoux
-# This scipt is available under the GPL-2 license.
+# Copyright 2019 Area31 Hackerspace
 
 ## HELP AND BASIC ARGUMENT PROCESSING
 #####################################

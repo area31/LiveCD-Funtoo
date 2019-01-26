@@ -1,0 +1,10 @@
+#!/sbin/openrc-run
+# Copyright 2019 Area31 Hackerspace
+# $Header: $
+
+start() {
+	ebegin "Starting hwsetup"
+	[ -e /etc/sysconfig ] || mkdir -p /etc/sysconfig
+	[ -x /usr/sbin/hwsetup ] && hwsetup
+	eend $?
+}

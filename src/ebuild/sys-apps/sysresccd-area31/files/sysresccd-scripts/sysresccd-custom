@@ -1,7 +1,5 @@
 #!/bin/bash
-# Project page: http://www.system-rescue-cd.org/
-# (C) 2003-2008 Francois Dupoux
-# This scipt is available under the GPL-2 license
+# Copyright 2019 Area31 Hackerspace
 
 ## HELP AND BASIC ARGUMENT PROCESSING
 #####################################
@@ -132,7 +130,7 @@ do_extract()
 	done
 	
 	# ---- copy optionnal files and directories
-	for curfile in boot bootprog bootdisk efi ntpasswd usb_inst usb_inst.sh usbstick.htm
+	for curfile in boot bootprog bootdisk efi ntpasswd usb_inst usb_inst.sh
 	do
 		if ! cp -a /livemnt/boot/${curfile} /mnt/custom/customcd/isoroot/ 2>/dev/null
 		then

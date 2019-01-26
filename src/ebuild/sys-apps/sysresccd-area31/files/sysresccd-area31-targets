@@ -74,12 +74,17 @@ rm -rf ${MNTDIR}/root/nohup.* ${MNTDIR}/root/.bash_history ${MNTDIR}/root/.vimin
 rm -rf ${MNTDIR}/var/log/messages ${MNTDIR}/var/log/wtmp ${MNTDIR}/var/log/Xorg.0.log* ${MNTDIR}/var/log/dmesg ${MNTDIR}/var/log/rc.log
 rm -rf ${MNTDIR}/etc/ssh/*key*
 rm -rf ${MNTDIR}/root/.gitconfig
+rm -rf ${MNTDIR}/root/.ssh
 mkdir -p ${MNTDIR}/root/.ssh
+chmod 700 ${MNTDIR}/root/.ssh
+touch ${MNTDIR}/root/.ssh/authorized_keys
+chmod 600 ${MNTDIR}/root/.ssh/authorized_keys
 rm -rf ${MNTDIR}/etc/skel
 cp -rp ${MNTDIR}/root ${MNTDIR}/etc/skel
 rm -rf ${MNTDIR}/tmp
 mkdir ${MNTDIR}/tmp
 chmod 777 ${MNTDIR}/tmp
+chmod g-w ${MNTDIR}/root
 
 
 # umount

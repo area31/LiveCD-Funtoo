@@ -1,7 +1,7 @@
 #!/sbin/openrc-run
 
 # provided by app-misc/livecd-tools
-source /sbin/livecd-functions.sh
+source /usr/sbin/livecd-functions.sh
 
 depend()
 {
@@ -81,7 +81,7 @@ start()
 					echo -e "${password}\n${password}\n" | vncpasswd /root/.vnc/passwd >>${vnclog} 2>&1
 
 					chmod 600 /root/.vnc/passwd
-					echo -e "xsetroot -solid grey\nexec /usr/bin/startlxqt >/dev/null 2>&1" >| /root/.vnc/xstartup
+					echo -e "xsetroot -solid grey\nexec /usr/bin/openbox >/dev/null 2>&1" >| /root/.vnc/xstartup
 					chmod 700 /root/.vnc/xstartup
 					displayopt=''
 					for ((i=1; i <= displaycnt; i++))

@@ -1,0 +1,50 @@
+#!/sbin/openrc-run
+
+depend()
+{
+	need alsasound
+}
+
+start()
+{
+	if [ -e /proc/asound/cards ]
+	then
+		for i in $(cat /proc/asound/cards | awk '{print $1}' | grep ^[[:digit:]])
+		do
+			ebegin "Unmuting sound card $i"
+			if [ -d /proc/asound/card$i ] && [ -x /usr/bin/amixer ]
+			then
+				amixer -c $i scontrols > /etc/amixer
+				[ -n "$(grep Master /etc/amixer)" ] \
+					&& amixer -c $i -q set Master 95% unmute \
+					>/dev/null 2>&1
+				[ -n "$(grep Front /etc/amixer)" ] \
+					&& amixer -c $i -q set Front 95% unmute \
+					>/dev/null 2>&1
+				[ -n "$(grep HDMI /etc/amixer)" ] \
+					&& amixer -c $i -q set HDMI 95% unmute \
+					>/dev/null 2>&1
+				[ -n "$(grep IEC958 /etc/amixer)" ] \
+					&& amixer -c $i -q set IEC958 95% unmute \
+					>/dev/null 2>&1
+				[ -n "$(grep PCM /etc/amixer)" ] \
+					&& amixer -c $i -q set PCM 95% unmute \
+					>/dev/null 2>&1
+				[ -n "$(grep Speaker /etc/amixer)" ] \
+					&& amixer -c $i -q set Speaker 95% unmute \
+					>/dev/null 2>&1
+				[ -n "$(grep Mic /etc/amixer)" ] \
+					&& amixer -c $i -q set Mic 95% mute cap \
+					>/dev/null 2>&1
+				[ -n "$(grep Wave /etc/amixer)" ] \
+					&& amixer -c $i -q set Wave 95% unmute \
+					>/dev/null 2>&1
+				[ -n "$(grep Capture /etc/amixer)" ] \
+					&& amixer -c $i -q set Capture 95% unmute cap \
+					>/dev/null 2>&1
+			fi
+			eend 0
+		done
+	fi
+	return 0
+}
