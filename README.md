@@ -64,9 +64,7 @@ https://www.funtoo.org/Make_your_own_LiveCD_using_Funtoo_Linux
 
 # Source code:
 
-~~~~
 https://github.com/area31/LiveCD-Funtoo/tree/master/src/ebuild/sys-apps/sysresccd-area31/files
-~~~~
 
 
 # Changelog:
