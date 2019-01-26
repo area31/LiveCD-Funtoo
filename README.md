@@ -30,7 +30,7 @@ MD5: a95540a84f75678a83288df12ad937e1
 
 # RTFM
 
-https://area31.net.br/wiki/RescueCD_oficial
+https://area31.net.br/wiki/LiveCD_oficial
 
 
 
@@ -40,14 +40,30 @@ https://www.funtoo.org/Make_your_own_LiveCD_using_Funtoo_Linux
 
 
 
-# Get sources:
+# Get Oficial INITRAM (overlayFS):
 
 ~~~~
-# git clone https://github.com/area31/RescueCD
+# wget https://area31.net.br/downloads/releases/initram-ara31-overlayfs-5.0.igz
 ~~~~
 
+
+
+# Get oficial ISOROOT (grub + syslinux + tools):
+
+~~~~
+# wget https://area31.net.br/downloads/ebuilds/releases/isoroot-livecd-funtoo-area31-5.0.tar.bz2
+~~~~
+
+
+# Get oficial kernel config (sys-kernel/gentoo-sources):
+
+~~~~
+# wget https://area31.net.br/downloads/ebuilds/releases/config-4.20.4-rescuecd-funtoo-overlayfs-area31-5.0
+~~~~
 
 
 # Changelog 5.0:
+
+https://area31.net.br/wiki/LiveCD_oficial#v5.0
 
 https://www.funtoo.org/index.php?title=Make_your_own_LiveCD_using_Funtoo_Linux&type=revision&diff=26687&oldid=26612
