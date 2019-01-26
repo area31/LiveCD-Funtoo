@@ -40,7 +40,7 @@ https://www.funtoo.org/Make_your_own_LiveCD_using_Funtoo_Linux
 
 
 
-# Get Oficial INITRAM (overlayFS):
+# Get Área31 Hackerspace INITRAM (overlayFS):
 
 ~~~~
 # wget https://area31.net.br/downloads/releases/initram-ara31-overlayfs-5.0.igz
