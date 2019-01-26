@@ -20,3 +20,10 @@ rc-update add consolekit default
 rc-update add syslog-ng default
 rc-update del keymaps boot
 rc-update del save-keymaps boot
+rc-update add sysresccd default
+
+CHECK_XDM=$(grep exit\ 0 /etc/init.d/xdm|wc -l)
+if [ ${CHECK_XDM} -lt 1 ]; then sed -i '2 i\exit 0' /etc/init.d/xdm;fi
+
+CHECK_XDM_SETUP=$(grep exit\ 0 /etc/init.d/xdm-setup|wc -l)
+if [ ${CHECK_XDM_SETUP} -lt 1 ]; then sed -i '2 i\exit 0' /etc/init.d/xdm-setup;fi
