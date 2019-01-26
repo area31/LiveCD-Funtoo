@@ -18,31 +18,25 @@ Lucas Coutinho Silva aka Otakku
 
 ================
 
-# 1- RTFM
+# FIRST: RTFM
 
 https://area31.net.br/wiki/RescueCD_oficial
 
-# 2- Get sources:
+
+# Make your own RescueCD based on Funtoo Linux:
+
+~~~~
+https://www.funtoo.org/Make_your_own_LiveCD_using_Funtoo_Linux
+~~~~
+
+# Get sources:
 
 ~~~~
 # git clone https://github.com/area31/RescueCD
 ~~~~
 
-
-# 3- Make your own RescueCD based on Funtoo Linux:
-
-~~~~
-https://www.funtoo.org/Make_your_own_RescueCD_based_on_Funtoo_Linux
-~~~~
-
-# 4- Personalize your LiveCD:
-
-~~~
-https://www.area31.net.br/wiki/RescueCD_-_Personalize_o_LiveCD_e_compile_um_novo_kernel
-~~~
-
 # Changelog 5.0:
 
 ~~~
-https://www.funtoo.org/index.php?title=Make_your_own_RescueCD_based_on_Funtoo_Linux&type=revision&diff=26612&oldid=25808
+https://www.funtoo.org/index.php?title=Make_your_own_LiveCD_using_Funtoo_Linux&type=revision&diff=26687&oldid=26612
 ~~~
