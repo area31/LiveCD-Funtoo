@@ -18,6 +18,11 @@ Lucas Coutinho Silva aka Otakku
 
 ================
 
+# Get the oficial LiveCD created by Área31 Hackerspace
+
+http://192.99.210.63/funtoo-livecd-area31-5.0-pre-release.iso
+
+
 # FIRST: RTFM
 
 https://area31.net.br/wiki/RescueCD_oficial
