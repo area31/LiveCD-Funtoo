@@ -48,14 +48,14 @@ https://www.funtoo.org/Make_your_own_LiveCD_using_Funtoo_Linux
 
 
 
-# Get oficial ISOROOT (grub + syslinux + tools):
+# Get Área31 Hackerspace ISOROOT (grub + syslinux + Tools):
 
 ~~~~
 # wget https://area31.net.br/downloads/ebuilds/releases/isoroot-livecd-funtoo-area31-5.0.tar.bz2
 ~~~~
 
 
-# Get oficial kernel config (sys-kernel/gentoo-sources):
+# Get Área31 Hackerspace kernel config (sys-kernel/gentoo-sources):
 
 ~~~~
 # wget https://area31.net.br/downloads/ebuilds/releases/config-4.20.4-rescuecd-funtoo-overlayfs-area31-5.0
