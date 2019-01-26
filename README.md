@@ -22,21 +22,31 @@ Lucas Coutinho Silva aka Otakku
 
 http://192.99.210.63/funtoo-livecd-area31-5.0-pre-release.iso
 
+~~~~
+MD5: a95540a84f75678a83288df12ad937e1
+~~~~
 
-# FIRST: RTFM
+
+
+# RTFM
 
 https://area31.net.br/wiki/RescueCD_oficial
+
 
 
 # Make your own RescueCD based on Funtoo Linux:
 
 https://www.funtoo.org/Make_your_own_LiveCD_using_Funtoo_Linux
 
+
+
 # Get sources:
 
 ~~~~
 # git clone https://github.com/area31/RescueCD
 ~~~~
+
+
 
 # Changelog 5.0:
 
