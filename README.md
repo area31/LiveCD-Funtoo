@@ -25,9 +25,7 @@ https://area31.net.br/wiki/RescueCD_oficial
 
 # Make your own RescueCD based on Funtoo Linux:
 
-~~~~
 https://www.funtoo.org/Make_your_own_LiveCD_using_Funtoo_Linux
-~~~~
 
 # Get sources:
 
@@ -37,6 +35,4 @@ https://www.funtoo.org/Make_your_own_LiveCD_using_Funtoo_Linux
 
 # Changelog 5.0:
 
-~~~
 https://www.funtoo.org/index.php?title=Make_your_own_LiveCD_using_Funtoo_Linux&type=revision&diff=26687&oldid=26612
-~~~
