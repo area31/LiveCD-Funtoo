@@ -1,0 +1,243 @@
+#!/bin/bash
+# Project page: http://www.system-rescue-cd.org/
+# By Francois Dupoux
+# (C) 2003-2008 Francois Dupoux
+# This scipt is available under the GPL-2 license.
+
+## HELP AND BASIC ARGUMENT PROCESSING
+#####################################
+
+usage()
+{
+  cat <<EOF
+sysresccd-backstore: SystemRescueCd script which builds a loopback filesystem 
+                     where to save all the changes made on files that belongs 
+                     to sysresccd
+Syntax:              sysresccd-backstore <command> ...
+
+Please, read the manual for help about how to use this script.
+
+Commands:
+ 1) create <file-path> <size-in-MiB>       Create a new backing-store
+ 2) growfs <file-path> <new-size-in-MiB>   Grow an existing backing-store
+
+ -h|--help	                           Display this screen
+
+Copyright 2008 Francois Dupoux. (http://www.system-rescue-cd.org)
+Distributed under the GNU Public License version 2
+EOF
+}
+
+## MISC FUNCTIONS: Many utilities functions
+###########################################
+
+# show the error message ($1 = first line of the message)
+help_readman()
+{
+	echo "$1"
+	echo "Please, read the manual for more help about this script"
+	echo "Web: http://www.system-rescue-cd.org"
+	exit 1
+}
+
+## Main
+###########################################
+
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]
+then
+	usage
+	exit 1
+fi
+
+if [ "`whoami`" != "root" ]
+then
+	help_readman "$0: This script requires root privileges to operate."
+	#exit 1
+fi
+
+## ERROR HANDLING
+#####################################
+
+die()
+{
+	if [ -n "$1" ]
+	then
+		echo -e "$1"
+	else
+		echo "aborting."
+	fi
+	exit 1
+}
+
+fileinuse()
+{
+	if [ ! -f "$1" ]
+	then
+		return 1
+	fi
+
+	bsid=$(blkid -o value -s UUID "$1") # UUID of the filesystem in the flat file
+
+	if [ -n "${bsid}" ] && blkid -o value -s UUID /dev/loop* | grep -q ${bsid}
+	then
+		return 0
+	else
+		return 1
+	fi
+}
+
+checks()
+{
+	for cmd in dd resize2fs mke2fs
+	do
+		if [ -z "$(which ${cmd})" ]
+		then
+			die "This script needs the command ${cmd} to work, cannot continue."
+		fi
+	done
+}
+
+## MAIN FUNCTIONS: Create the new ISO image
+########################################################
+do_create()
+{
+	FILEPATH="$1"
+	FILESIZE="$2"
+
+	checks
+	
+	if [ -z "${FILEPATH}" ] || [ -z "${FILESIZE}" ]
+	then
+		die "create: syntax error, this command expects two arguments"
+	fi
+
+	if ! echo "${FILESIZE}" | grep -q '^[0-9]*$' || [ "${FILESIZE}" -lt 16 ] || [ "${FILESIZE}" -gt 32768 ]
+	then
+		die "create: the filesize must be a valid integer number (between 16 and 32768)"
+	fi
+
+	if [ -f "${FILEPATH}" ]
+	then
+		die "create: ${FILEPATH} already exists, please remote this file first."
+	fi
+
+	if fileinuse "${FILEPATH}"
+	then
+		die "create: ${FILEPATH} is mounted, cannot work on a file in use. \nyou can restart with option 'backstore=off' in order to work on it."
+	fi
+
+	if ! touch "${FILEPATH}" >/dev/null 2>&1
+	then
+		die "create: cannot create ${FILEPATH}"
+	fi
+
+	cmd="dd if=/dev/zero of=${FILEPATH} bs=1024k count=${FILESIZE}"
+	echo "${cmd}"
+	if ! ${cmd} >/dev/null 2>&1
+	then
+		die "create: dd failed to create ${FILEPATH} (${cmd})"
+	fi
+	
+	cmd="mke2fs -j -F -b 1024 ${FILEPATH}"
+	echo "${cmd}"
+	if ! ${cmd} >/dev/null 2>&1
+	then
+		die "create: mke2fs failed to make the loop filesystem in ${FILEPATH} (${cmd})"
+	fi
+	
+	echo "create: successfully created ${FILEPATH} with a loopback ext3 filesystem."
+}
+
+do_grow()
+{
+	FILEPATH="$1"
+	FILESIZE="$2"
+	
+	checks
+	
+	if [ -z "${FILEPATH}" ] || [ -z "${FILESIZE}" ]
+	then
+		die "grow: syntax error, this command expects two arguments"
+	fi
+
+	if [ ! -f "${FILEPATH}" ]
+	then
+		die "grow: the file ${FILEPATH} does not exist"
+	fi
+
+	if ! echo "${FILESIZE}" | grep -q '^[0-9]*$' || [ "${FILESIZE}" -lt 16 ] || [ "${FILESIZE}" -gt 32768 ]
+	then
+		die "grow: the filesize must be a valid integer number (between 16 and 32768)"
+	fi
+
+	if fileinuse "${FILEPATH}"
+	then
+		die "grow: ${FILEPATH} is mounted, cannot work on a file in use. \nyou can restart with option 'backstore=off' in order to work on it."
+	fi
+
+	if ! touch "${FILEPATH}" >/dev/null 2>&1
+	then
+		die "grow: cannot create ${FILEPATH}"
+	fi
+
+	oldsize="$(du -m ${FILEPATH} | awk '{print $1}')"
+	diffsize="$((FILESIZE-oldsize))"
+
+	if [ "${FILESIZE}" -le "${oldsize}" ]
+	then
+		die "grow: the new size must be higher than the old one (${FILESIZE} <= ${oldsize})"
+	fi
+
+	cmd="dd if=/dev/zero bs=1024k count=${diffsize}"
+	echo "${cmd}"
+	if ! ${cmd} >> ${FILEPATH} 2>/dev/null
+	then
+		die "grow: [${cmd}] failed to grow ${FILEPATH} to ${FILESIZE}MB"
+	fi
+	
+	if dumpe2fs -h ${FILEPATH} >/dev/null 2>&1
+	then
+		cmd="e2fsck -f ${FILEPATH}"
+		echo "${cmd}"
+		if ! ${cmd}
+		then
+			die "grow: [${cmd}] failed to check the loopback filesystem on ${FILEPATH}"
+		fi
+		
+		cmd="resize2fs ${FILEPATH}"
+		echo "${cmd}"
+		if ! ${cmd} >/dev/null 2>&1
+		then
+			die "grow: [${cmd}] failed to grow the filesystem in ${FILEPATH}"
+		fi
+	elif reiserfstune ${FILEPATH} >/dev/null 2>&1
+	then
+		cmd="resize_reiserfs ${FILEPATH}"
+		echo "${cmd}"
+		if ! ${cmd} >/dev/null 2>&1
+		then
+			die "grow: [${cmd}] failed to grow the filesystem in ${FILEPATH}"
+		fi
+	else
+		die "grow: ${FILEPATH} does not contain a valid ext3 filesystem, cannot run resize2fs."
+	fi
+
+	echo "grow: successfully grown ${FILEPATH} to ${FILESIZE}MB"
+}
+
+## MAIN SHELL FUNCTION
+########################################################
+
+case "$1" in
+    create)
+    	do_create "$2" "$3";;
+    growfs)
+    	do_grow "$2" "$3";;
+    grow)
+    	do_grow "$2" "$3";;
+    *)
+        usage 
+        exit 1
+        ;;
+esac
+exit 0

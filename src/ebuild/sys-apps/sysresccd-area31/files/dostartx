@@ -1,0 +1,36 @@
+#!/sbin/openrc-run
+
+DAEMON="/usr/bin/startx"
+ARGS="/etc/X11/xinit/xinitrc"
+PIDFILE="/var/run/dostartx.pid"
+LOGFILE="/var/log/dostartx.log"
+CWD="/root"
+
+depend() {
+	after sysresccd
+}
+
+start() {
+	if grep -q "dostartx" /proc/cmdline
+	then
+		ebegin "Starting the graphical environment"
+		start-stop-daemon --start --quiet --user root --env SHELL="/bin/bash" \
+			--pidfile $PIDFILE --exec $DAEMON --background --chdir $CWD \
+			--stdout $LOGFILE --make-pidfile -- $ARGS
+		eend $?
+	else
+		echo "0" >| $PIDFILE
+		eend 0
+	fi
+}
+
+stop() {
+	ebegin "Stopping the graphical environment"
+	SVCPID=$(cat $PIDFILE)
+	if [ "${SVCPID}" -gt 0 ]
+	then
+		start-stop-daemon --stop --quiet --pidfile $PIDFILE --exec $DAEMON
+	fi
+	eend $?
+}
+

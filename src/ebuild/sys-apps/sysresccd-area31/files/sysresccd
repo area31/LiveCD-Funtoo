@@ -1,0 +1,148 @@
+#!/sbin/openrc-run
+
+# provided by app-misc/livecd-tools
+source /sbin/livecd-functions.sh
+
+depend()
+{
+	before autorun tigervnc
+	after sshd
+}
+
+start()
+{
+	ebegin "Performing the SystemRescueCd specific initializations"
+
+	CMDLINE="$(cat /proc/cmdline)"
+
+	mkdir -p /var/lib/misc
+
+	# ---- disable screensaver in the console ----
+	setterm -blank 0 -powersave off
+
+	# ---- auto-detect software raid ----
+	if ! echo ${CMDLINE} | grep -q 'nomdadm'
+	then
+		[ -n "$(which mdadm)" ] && mdadm --auto-detect 2>&1
+	fi
+	
+	# ---- change the root password if requested in cmdline ----
+	for curopt in ${CMDLINE}
+	do
+		if echo "${curopt}" | grep -q -E '^rootpass=[^ ]{1,32}$'
+		then
+			newpass="$(echo ${curopt} | sed -r -e 's!^rootpass=([^ ]{1,32})$!\1!g')"
+			( echo root:${newpass} ) | chpasswd 1>/dev/null 2>&1
+		fi
+	done
+
+	# ---- options to start/stop services ----
+	for curopt in ${CMDLINE}
+	do
+		if echo "${curopt}" | grep -q -E '^initscript=[a-zA-Z0-9]{1,32}:[a-z]{1,32}$'
+		then
+			touch /var/log/initscript.log
+			service="$(echo ${curopt} | sed -r -e 's!^initscript=([a-zA-Z0-9]{1,32}):([a-z]{1,32})$!\1!g')"
+			action="$(echo ${curopt} | sed -r -e 's!^initscript=([a-zA-Z0-9]{1,32}):([a-z]{1,32})$!\2!g')"
+			echo "initscript: found option ${curopt} (service=${service} and action=${action}" >| /var/log/initscript.log
+			if [ -x "/etc/init.d/${service}" ]
+			then
+				cmd="/etc/init.d/${service} ${action}"
+				${cmd} > /var/log/initscript-${service}.log 2>&1
+				res=$?
+				echo "initscript: ${cmd} --> ${res}" | tee -a /var/log/initscript.log
+			else
+				echo "initscript: /etc/init.d/${service} not found" | tee -a /var/log/initscript.log
+			fi
+		fi
+	done
+	
+	# ---- options to configure and start the vncserver ----
+	# eg: "rescue64 vncserver=2:mYpAsWd" will create two vnc displays (display=1 on port 5900 and display=2 on port 5901)
+	# and the two displays will use the same password and the root user account (password=mYpAsWd)
+	# this option should be used only once, but in case of multiple usages the last vncserver option overwrite the previous ones
+	vnclog='/var/log/vncserver.log'
+	for curopt in ${CMDLINE}
+	do
+		case "${curopt}" in
+			vncserver\=*)
+				echo '' >| ${vnclog}
+				vncopt="$(echo ${curopt} | cut -d= -f2)"
+				echo " vncserver: found option vncserver=${vncopt}" | tee -a ${vnclog}
+				if echo "${vncopt}" | grep -q -E '^[1-9]:[^ ]{6,12}$'
+				then
+					[ -f /root/.vnc/passwd ] && rm -f /root/.vnc/passwd
+					[ ! -d /root/.vnc ] && mkdir -p /root/.vnc
+					sed -i -e 's!^DISPLAYS=.*!!g' /etc/conf.d/tigervnc
+					displaycnt="$(echo ${curopt} | sed -r -e 's!^vncserver=([1-9]):([^ ]{6,12})$!\1!g')"
+					password="$(echo ${curopt} | sed -r -e 's!^vncserver=([1-9]):([^ ]{6,12})$!\2!g')"
+					echo "vncserver: ${displaycnt} displays will be created" | tee -a ${vnclog}
+					echo "vncserver: creating password file in /root/.vnc/passwd:" >>${vnclog}
+					echo -e "${password}\n${password}\n" | vncpasswd /root/.vnc/passwd >>${vnclog} 2>&1
+
+					chmod 600 /root/.vnc/passwd
+					echo -e "xsetroot -solid grey\nexec /usr/bin/startlxqt >/dev/null 2>&1" >| /root/.vnc/xstartup
+					chmod 700 /root/.vnc/xstartup
+					displayopt=''
+					for ((i=1; i <= displaycnt; i++))
+					do
+						echo "vncserver: preparing display number $i" | tee -a ${vnclog}
+						displayopt="${displayopt} root:$i"
+						displayopt="$(echo ${displayopt} | sed -e 's!^ !!g' | sed -e 's! $!!g')"
+					done
+					echo "DISPLAYS=\"${displayopt}\"" >> /etc/conf.d/tigervnc
+				else
+					echo "vncserver: invalid syntax (expected \"vncserver=x:mYpAsWd\")"
+					echo "           where x is the number of displays (1 or 2 in general)"
+					echo "           mYpAsWd is a password (between 6 and 12 characters)"
+					sleep 2
+				fi
+				;;
+		esac
+	done
+	
+	# ---- clean /etc/mtab ----
+	if grep -q -F 'tmpfs /newroot' /etc/mtab
+	then
+		rm -f /etc/mtab.bak
+		cp /etc/mtab /etc/mtab.bak
+		sed -i -e "/ \/newroot/d" /etc/mtab
+	fi
+
+	# ---- create a kernel options file ----
+	if [ -f /proc/config.gz ]
+	then
+		cat /proc/config.gz | gzip -d > /root/kernel-$(uname -r).conf
+	fi
+
+	# ---- mount tmpfs (important for backing store) ----
+	mount -t tmpfs tmpfs /tmp
+
+	# ---- allow reboot after dropping the nbd conection ----
+	if echo ${CMDLINE} | grep -q ' nbdboot=\| netboot=nbd:'
+	then
+		cp /sbin/halt /tmp
+		mv /tmp/halt /sbin
+		ln -sf /sbin/halt /sbin/reboot
+	fi
+
+	# ---- Create LVM devices such as /dev/VolGroup00/root
+	vgscan --mknodes > /dev/null 2>&1
+
+	# ---- automatically use 64bit version of fsarchiver/memtester if possible
+	if uname -m | grep -q x86_64
+	then
+		if [ -f /usr/sbin/fsarchiver-64bit ]
+		then
+			mv /usr/sbin/fsarchiver /usr/sbin/fsarchiver-32bit
+			ln -s /usr/sbin/fsarchiver-64bit /usr/sbin/fsarchiver
+		fi
+
+		if [ -f /usr/sbin/memtester-64bit ]
+		then
+			mv /usr/sbin/memtester /usr/sbin/memtester-32bit
+			ln -s /usr/sbin/memtester-64bit /usr/sbin/memtester
+		fi
+	fi
+}
+

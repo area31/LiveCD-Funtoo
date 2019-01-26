@@ -1,0 +1,43 @@
+#!/sbin/openrc-run
+
+source /sbin/livecd-functions.sh
+
+depend()
+{
+	after pwgen sshd portmap
+	before sysresccd
+}
+
+start()
+{
+	ebegin "Loading fonts and keymaps"
+
+	keymap=$(grep '^XKEYBOARD=' /etc/sysconfig/keyboard 2>/dev/null | cut -d= -f2)
+
+	FONT="ter-v16b"
+
+	case "${keymap}" in
+		fr|16)
+			loadkeys fr-latin9
+			;;
+		uk|40)
+			loadkeys uk
+			;;
+		ru|31)
+			loadkeys ru
+			FONT="LatArCyrHeb-16"
+			setfont $FONT
+			;;
+		pl|28)
+			loadkeys pl
+			setfont -m 8859-2
+			;;
+	esac
+
+	if [ -n "${FONT}" ]
+	then
+	    SRC="CONSOLEFONT";INS="$SRC=\"$FONT\""
+	    sed -i -e "/^[#]*$SRC/{/^#$INS/d;/^[^#]/{/$INS/!{s/^/#/;a $INS" -e "}}}" /etc/conf.d/consolefont
+	fi
+}
+

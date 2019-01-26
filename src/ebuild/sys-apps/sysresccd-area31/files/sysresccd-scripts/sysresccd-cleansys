@@ -1,0 +1,118 @@
+#!/bin/bash
+# Project page: http://www.system-rescue-cd.org/
+# (C) 2003-2008 Francois Dupoux
+# This scipt is available under the GPL-2 license
+
+## HELP AND BASIC ARGUMENT PROCESSING
+#####################################
+PROG=${0}
+
+usage()
+{
+	cat <<EOF
+sysresccd-cleansys: SystemRescueCd script that uninstalls useless packages
+Syntax:             sysresccd-cleansys <catpkg1> [<catpkg2>] ...
+
+Available packages categories:
+ 1) devtools        Development tools (gcc, make, ...) and gentoo commands
+ 2) x11tools        All the graphical programs (xorg, firefox, gparted, ...)
+
+ -h|--help	    Display this screen
+
+Please, read the manual for help about how to use this script.
+http://www.system-rescue-cd.org/Sysresccd-manual-en_How_to_personalize_SystemRescueCd
+This script must be executed inside the chroot environment.
+
+Distributed under the GNU Public License version 2 - http://www.system-rescue-cd.org
+EOF
+}
+
+## ERROR HANDLING
+#####################################
+
+die()
+{
+	if [ -n "$1" ]
+	then
+		echo "${PROG}: error: $1"
+	else
+		echo "${PROG}: aborting."
+	fi
+	exit 1
+}
+
+## MAIN FUNCTIONS: Create the new squashfs image from files
+########################################################
+do_cleansys()
+{
+	exclpackages=''
+	exclfiledirs=''
+	datadir='/usr/share/sysresccd'
+
+	[ "$#" -lt 1 ] && die "this command requires at least one argument. You must specify which package category to remove"
+	
+	# ---- for each package-category given on the command line
+	for pkgc in "$@"
+	do
+		echo "do_cleansys: package-category=${pkgc}"
+
+		removepackages="${datadir}/removelist-${pkgc}-unmerge.txt"
+		removefiledirs="${datadir}/removelist-${pkgc}-filedir.txt"
+		
+		if [ ! -f "${removepackages}" ] || [ ! -f "${removefiledirs}" ]
+		then
+			die "File ${removepackages} or ${removefiledirs} was not found, you must specify a valid category of packages (eg: \"devtools\")"
+		fi
+
+		# ---- list of packages to uninstall
+		exclpackages="${exclpackages} $(cat ${removepackages} | grep -v '^#' | xargs)"
+		
+		# ---- list of files/dirs to remove
+		exclfiledirs="${exclfiledirs} $(cat ${removefiledirs} | grep -v '^#' | xargs)"
+	done
+
+	if [ -z "$(which emerge 2>/dev/null)" ]
+	then
+		die "Command emerge not found, cannot continue. The development-tools are required to remove packages."
+	fi
+	
+	# ---- it's important to run 'unmerge -C' only once (emerge is necessary to unmerge)
+	echo "========================removing packages======================="
+	cmd="emerge -C ${exclpackages}"
+	echo "==> ${cmd}"
+	${cmd}
+	
+	# ---- remove files and dirs
+	echo "========================removing files======================="
+	for curfile in ${exclfiledirs}
+	do
+		cmd="rm -rf ${curfile}"
+		echo "${cmd}"
+		${cmd}
+	done
+
+	exit 0
+}
+
+## Main script code
+###########################################
+
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]
+then
+	usage
+	exit 1
+fi
+
+if [ "$(whoami)" != "root" ]
+then
+	die "$(basename $0): This script requires root privileges to operate."
+fi
+
+if [ "$#" -ge 1 ]
+then
+	do_cleansys "$@"
+else
+	echo "$(basename $0): This script requires at least one argument to operate."
+	echo ""
+	usage
+fi

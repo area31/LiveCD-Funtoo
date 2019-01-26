@@ -1,0 +1,2 @@
+#!/bin/sh
+dialog --title "RescueCD Area31 Tools Help" --exit-label OK --textbox "/usr/share/sysresccd-area31/sysresccd-area31-help.txt" 32 97

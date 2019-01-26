@@ -1,0 +1,223 @@
+#!/bin/bash
+
+RDIR=/dev/tty4
+DIR_MNT="/mnt/custom"
+TMP="/tmp/sysresccd-area31"
+
+if [ ! -d ${TMP} ]; then
+	mkdir -p ${TMP}
+fi
+
+
+echo "us" > $TMP/SeTkeymap
+if [ ! -d $TMP ]; then
+  mkdir -p $TMP
+fi
+while [ 0 ]; do
+dialog --title " KEYBOARD MAP SELECTION " --menu "You can select \
+one of the keyboard maps following. If you doesn't select a keyboard map \
+'us' will be default. Use keys [UP] / [DOWN] and [PageUp] / [PageDown] \
+to navigate through the options list." 35 55 25 \
+"qwerty/us" "" \
+"qwerty/br-abnt2" "" \
+"qwerty/uk" "" \
+"azerty/azerty" "" \
+"azerty/be-latin1" "" \
+"azerty/fr-latin0" "" \
+"azerty/fr-latin1" "" \
+"azerty/fr-latin9" "" \
+"azerty/fr-old" "" \
+"azerty/fr-pc" "" \
+"azerty/fr" "" \
+"azerty/wangbe" "" \
+"azerty/wangbe2" "" \
+"colemak/en-latin9" "" \
+"dvorak/ANSI-dvorak" "" \
+"dvorak/dvorak-fr" "" \
+"dvorak/dvorak-l" "" \
+"dvorak/dvorak-r" "" \
+"dvorak/dvorak" "" \
+"dvorak/no-dvorak" "" \
+"fgGIod/tr_f-latin5" "" \
+"fgGIod/trf-fgGIod" "" \
+"olpc/es-olpc" "" \
+"olpc/pt-olpc" "" \
+"qwerty/bashkir" "" \
+"qwerty/bg-cp1251" "" \
+"qwerty/bg-cp855" "" \
+"qwerty/bg_bds-cp1251" "" \
+"qwerty/bg_bds-utf8" "" \
+"qwerty/bg_pho-cp1251" "" \
+"qwerty/bg_pho-utf8" "" \
+"qwerty/br-abnt" "" \
+"qwerty/br-latin1-abnt2" "" \
+"qwerty/br-latin1-us" "" \
+"qwerty/by-cp1251" "" \
+"qwerty/by" "" \
+"qwerty/bywin-cp1251" "" \
+"qwerty/cf" "" \
+"qwerty/cz-cp1250" "" \
+"qwerty/cz-lat2-prog" "" \
+"qwerty/cz-lat2" "" \
+"qwerty/cz-qwerty" "" \
+"qwerty/defkeymap" "" \
+"qwerty/defkeymap_V1.0" "" \
+"qwerty/dk-latin1" "" \
+"qwerty/dk" "" \
+"qwerty/emacs" "" \
+"qwerty/emacs2" "" \
+"qwerty/es-cp850" "" \
+"qwerty/es" "" \
+"qwerty/et-nodeadkeys" "" \
+"qwerty/et" "" \
+"qwerty/fi-latin1" "" \
+"qwerty/fi-latin9" "" \
+"qwerty/fi-old" "" \
+"qwerty/fi" "" \
+"qwerty/gr-pc" "" \
+"qwerty/gr" "" \
+"qwerty/hu101" "" \
+"qwerty/il-heb" "" \
+"qwerty/il-phonetic" "" \
+"qwerty/il" "" \
+"qwerty/is-latin1-us" "" \
+"qwerty/is-latin1" "" \
+"qwerty/it-ibm" "" \
+"qwerty/it" "" \
+"qwerty/it2" "" \
+"qwerty/jp106" "" \
+"qwerty/kazakh" "" \
+"qwerty/ky_alt_sh-UTF-8" "" \
+"qwerty/kyrgyz" "" \
+"qwerty/la-latin1" "" \
+"qwerty/lt.baltic" "" \
+"qwerty/lt.l4" "" \
+"qwerty/lt" "" \
+"qwerty/mk-cp1251" "" \
+"qwerty/mk-utf" "" \
+"qwerty/mk" "" \
+"qwerty/mk0" "" \
+"qwerty/nl" "" \
+"qwerty/nl2" "" \
+"qwerty/no-latin1" "" \
+"qwerty/no" "" \
+"qwerty/pc110" "" \
+"qwerty/pl" "" \
+"qwerty/pl1" "" \
+"qwerty/pl2" "" \
+"qwerty/pl3" "" \
+"qwerty/pl4" "" \
+"qwerty/pt-latin1" "" \
+"qwerty/pt-latin9" "" \
+"qwerty/pt" "" \
+"qwerty/ro" "" \
+"qwerty/ro_std" "" \
+"qwerty/ru-cp1251" "" \
+"qwerty/ru-ms" "" \
+"qwerty/ru-yawerty" "" \
+"qwerty/ru" "" \
+"qwerty/ru1" "" \
+"qwerty/ru2" "" \
+"qwerty/ru3" "" \
+"qwerty/ru4" "" \
+"qwerty/ru_win" "" \
+"qwerty/ruwin_alt-CP1251" "" \
+"qwerty/ruwin_alt-KOI8-R" "" \
+"qwerty/ruwin_alt-UTF-8" "" \
+"qwerty/ruwin_cplk-CP1251" "" \
+"qwerty/ruwin_cplk-KOI8-R" "" \
+"qwerty/ruwin_cplk-UTF-8" "" \
+"qwerty/ruwin_ct_sh-CP1251" "" \
+"qwerty/ruwin_ct_sh-KOI8-R" "" \
+"qwerty/ruwin_ct_sh-UTF-8" "" \
+"qwerty/ruwin_ctrl-CP1251" "" \
+"qwerty/ruwin_ctrl-KOI8-R" "" \
+"qwerty/ruwin_ctrl-UTF-8" "" \
+"qwerty/se-fi-ir209" "" \
+"qwerty/se-fi-lat6" "" \
+"qwerty/se-ir209" "" \
+"qwerty/se-lat6" "" \
+"qwerty/se-latin1" "" \
+"qwerty/sk-prog-qwerty" "" \
+"qwerty/sk-qwerty" "" \
+"qwerty/speakup-jfw" "" \
+"qwerty/speakupmap" "" \
+"qwerty/sr-cy" "" \
+"qwerty/sv-latin1" "" \
+"qwerty/tj_alt-UTF8" "" \
+"qwerty/tr_q-latin5" "" \
+"qwerty/tralt" "" \
+"qwerty/trf" "" \
+"qwerty/trq" "" \
+"qwerty/ttwin_alt-UTF-8" "" \
+"qwerty/ttwin_cplk-UTF-8" "" \
+"qwerty/ttwin_ct_sh-UTF-8" "" \
+"qwerty/ttwin_ctrl-UTF-8" "" \
+"qwerty/ua-cp1251" "" \
+"qwerty/ua-utf-ws" "" \
+"qwerty/ua-utf" "" \
+"qwerty/ua-ws" "" \
+"qwerty/ua" "" \
+"qwerty/uk" "" \
+"qwerty/us-acentos" "" \
+"qwerty/us" "" \
+"qwertz/croat" "" \
+"qwertz/cz-us-qwertz" "" \
+"qwertz/cz" "" \
+"qwertz/de-latin1-nodeadkeys" "" \
+"qwertz/de-latin1" "" \
+"qwertz/de-mobii" "" \
+"qwertz/de" "" \
+"qwertz/de_CH-latin1" "" \
+"qwertz/de_alt_UTF-8" "" \
+"qwertz/fr_CH-latin1" "" \
+"qwertz/fr_CH" "" \
+"qwertz/hu" "" \
+"qwertz/sg-latin1-lk450" "" \
+"qwertz/sg-latin1" "" \
+"qwertz/sg" "" \
+"qwertz/sk-prog-qwertz" "" \
+"qwertz/sk-qwertz" "" \
+"qwertz/slovene" "" \
+ 2> $TMP/SeTkeymap
+ if [ ! $? = 0 ]; then
+  rm -f $TMP/SeTkeymap
+  exit
+ fi
+ MAPNAME="`cat $TMP/SeTkeymap`"
+ MAPNAME="`basename $MAPNAME`"
+ echo $MAPNAME > $TMP/SeTkeymap
+ loadkeys $MAPNAME
+
+ while [ 0 ]; do
+  # Match the dialog colors a little while doing the keyboard test:
+  setterm -background cyan -foreground black
+  clear
+  cat << EOF
+
+    OK the new keyboard map is configured. Now you can test it typing whatever you
+    wish. Case the mapping is adequate type 1 in a new line to accept the mapping
+    and type [ENTER] or 2 in a new line and type [ENTER] case you wish to reject
+    the actual keyboard mapping to select a new one.
+
+EOF
+  echo -n "    "
+  read REPLY
+  if [ "$REPLY" = "1" -o "$REPLY" = "2" ]; then
+   break;
+  fi
+ done
+ setterm -background default -foreground default
+if [ "$REPLY" = "1" ]; then
+  # Make a persistent (P) copy so starting setup won't erase it:
+  cp $TMP/SeTkeymap $TMP/Pkeymap
+  break;
+else
+  rm -f $TMP/$MAPNAME
+  rm -f $TMP/SeTkeymap $TMP/Pkeymap
+ # Clear bad selection:
+ loadkeys us
+  continue;
+fi
+done
+setterm -background default -foreground default

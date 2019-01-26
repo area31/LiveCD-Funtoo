@@ -1,0 +1,842 @@
+#!/bin/bash
+
+#
+# Knoppix install on hard disk
+# knx-hdinstall 0.39
+# 01/2003 Christian Perle <perle@itm.tu-clausthal.de>
+#
+# 06/2003 update by Fabian Franz <knx-hdinstall@fabian-franz.de>
+#
+# 01/2004 adapted for SystemRescueCD http://www.system-rescue-cd.org
+# by Franck Ladurelle <ladurelf@partimage.org>
+#
+#
+# Knoppix install contributors:
+# Eduard Bloch <inet@zombie.inka.de> better lilo.conf support
+# Erik Ringius <erik.ringius@telia.com> swedish translation
+# Erik Schanze <schanzi_@gmx.de> extended swap selection
+# Fabian Franz <fabianfranz@gmx.de> progress bar, more filesystem types
+# Florent Beranger <cosmicflo@tuxfamily.org> french translation
+# Klaus Knopper <knopper@linuxtag.org> knoppix specific changes/bugfixes
+# Luis Llorente <luis.llorente@hispalinux.es> spanish translation
+#
+# This software is released under the GPL. There is NO WARRANTY.
+# (see http://www.gnu.org/licenses/gpl.html)
+#
+# TODO:
+# separate /boot partition
+# optional automounter support
+# "no cloop" install (extract_compressed_fs, requires doubled disk space)
+#
+
+SVERSION="0.39-sysresccd"
+MVERSION="1"
+
+# get the kernel command line
+CMDLINE="$(cat /proc/cmdline)"
+
+# some functions borrowed from knoppix-autoconfig
+
+stringinstring()
+{
+  case "$2" in *$1*) return 0;; esac
+  return 1
+}
+
+getbootparam()
+{
+  stringinstring "$1=" "$CMDLINE" || return 1
+  result="${CMDLINE##*$1=}"
+  result="${result%%[ 	]*}"
+  echo "$result"
+  return 0
+}
+
+checkbootparam()
+{
+  stringinstring "$1" "$CMDLINE"
+  return "$?"
+}
+
+rotdash()
+{
+  p=$1
+  while [ -d /proc/$p ]
+  do
+    echo -n '/' ; usleep 100000
+    echo -n '-' ; usleep 100000
+    echo -n '\' ; usleep 100000
+    echo -n '|' ; usleep 100000
+  done
+}
+
+progressbar()
+{
+  {
+  TOTAL=255
+  p=$1
+  while [ -d /proc/$p ]
+  do
+    PROGRESS=$(df -m /mnt/custom | awk '/custom/{print $3}')
+    echo $[PROGRESS*100/TOTAL]
+    sleep 5
+  done
+  } | $DIA --backtitle "$BT" --title "$T1" --gauge "$M2" 8 60 0
+}
+
+# X or text console
+case "`tty`" in
+  /dev/tty[1-8])
+    MODE=text
+    DIA=dialog
+    ;;
+  /dev/pts/*|/dev/ttyp*)
+    MODE=x
+    export XDIALOG_HIGH_DIALOG_COMPAT=1
+    [ -x /usr/bin/gdialog ] && DIA=gdialog
+    [ -x /usr/bin/Xdialog ] && DIA=Xdialog
+    [ $DIA = dialog ] && MODE=text
+    ;;
+  *)
+    MODE=text
+    DIA=dialog
+    ;;
+esac
+# text mode if DISPLAY is not set
+if [ -z "$DISPLAY" ] ; then
+  MODE=text
+  DIA=dialog
+fi
+
+# mount point for root filesystem
+TR="/mnt/custom"
+# mount points for loop-mounts
+TL1="/mnt/l1"
+TL2="/mnt/l2"
+# default hostname
+DEFHNAME="box"
+
+if [ $UID != 0 ] ; then
+  echo "This script requires root privileges."
+  exit 0
+fi
+
+# read config file
+
+APPEND_OPTIONS=
+if [ -r /proc/cmdline ]; then
+  for parm in `cat /proc/cmdline`; do 
+    parm=`echo $parm | sed -e 's/^ *//' | tr [A-Z]  [a-z]`
+    name=`echo $parm | cut -f1 -d=`
+    value=`echo $parm | cut -f2 -d=`
+    case $name in
+      config)
+        [ -f "/livemnt/boot/$value" ] && CONFIG_FILE=/livemnt/boot/$value
+        [ -f "/root/$value" ] && CONFIG_FILE=/root/$value
+        ;;
+      nonet|noscsi|nousb|noapic)
+        APPEND_OPTIONS="$APPEND_OPTIONS $value"
+	;;
+      autoruns)
+        APPEND_AUTORUNS="$APPEND_AUTORUNS $name=$value"
+	;;
+      vga|video)
+        VGAMODE="vga=$value"
+	;;
+    esac
+  done
+fi
+
+grep noconfig /proc/cmdline > /dev/null
+if [ $? = 0 ]; then
+  CONFIG_FILE=
+fi
+
+[ -r "$CONFIG_FILE" ] && . $CONFIG_FILE
+
+[ -x "$PRE_SCRIPT" ] && $PRE_SCRIPT
+
+TMP="/tmp/hdinst.tmp.$$"
+[ -f /etc/sysconfig/i18n ] && . /etc/sysconfig/i18n
+ORIG_LANG="$LANG"
+
+ORIG_LANGUAGE="en"
+if [ -r /proc/cmdline ]; then
+	for parm in `cat /proc/cmdline`; do
+		parm=`echo $parm | sed -e 's/^ *//' | tr [A-Z] [a-z]`
+		name=`echo $parm | cut -f1 -d=`
+		value=`echo $parm | cut -f2 -d=`
+		case $name in
+			setkmap)
+				ORIG_LANGUAGE="$value"
+				;;
+		esac
+	done
+fi
+
+ORIG_LC_ALL="$LC_ALL"
+# throw away locale settings
+export LANG=C
+export LANGUAGE=C
+export LC_ALL=C
+umask 022
+killall dhcpcd >/dev/null 2>&1
+killall -9 pump >/dev/null 2>&1
+killall automount >/dev/null 2>&1
+swapoff -a >/dev/null 2>&1
+# unmount anything in /mnt
+while read x mnt x
+do
+  case "$mnt" in
+    /mnt*)
+ ###     umount $mnt >/dev/null 2>&1
+      ;;
+    *) ;;
+  esac
+done < /proc/mounts
+
+case "$ORIG_LANGUAGE" in
+de|at|ch)
+BT="SysrescCD Installation"
+M1="Dieses Skript hilft bei der Installation \
+von Knoppix auf Festplatte. Beachten Sie, \
+dass sich knx-hdinstall noch in der \
+Entwicklungsphase befindet. Für Datenverluste oder Hardwareschäden \
+übernimmt der Autor Christian Perle und KNOPPER.NET keine Haftung."
+;;
+es)
+BT="Instalación de SysrescCD"
+M1="Este script ayuda en la instalación de Knoppix \
+en el disco duro. Nótese que knx-hdinstall está todavía en \
+desarrollo. El autor no toma ninguna responsabilidad \
+en caso de pérdida de datos o daño del hardware."
+;;
+fr)
+BT="Installation de SysrescCD"
+M1="Ce script aide à installer Knoppix \
+sur un disque dur. Notez que knx-hdinstall est en phase de développement. \
+L'auteur Christian Perle et KNOPPER.NET se dégagent de toute responsabilité \
+en cas de perte de données ou dommage matériel."
+;;
+se)
+BT="SysrescCD installation"
+M1="Detta skript är en hjälp vid installation av Knoppix \
+på en hårddisk. Observera att knx-hdinstall är under utveckling. \
+Författaren Christian Perle och KNOPPER.NET avsäger sig allt ansvar \
+för alla skador, förlorade data och skador på hårdvara."
+;;
+*)
+BT="SysrescCD Install"
+M1="This script helps installing Knoppix \
+on a hard disk. Note that knx-hdinstall is still under \
+development. The author Christian Perle and KNOPPER.NET take no responsibility \
+for data loss or hardware damage."
+;;
+esac
+
+if [ "$NO_MESSAGES" != "yes" ]; then
+  $DIA --backtitle "$BT" --title "knx-hdinstall $SVERSION" --msgbox "$M1" 16 45
+fi
+
+# valid partitioning: min. 2.2 GB file system, min. 128 MB swap
+FSMIN=295
+SWAPMIN=0
+# "no cloop" method requires more space
+NCLOOPFSMIN=4400
+
+# size of initrd: 2.5 MB
+INSIZE=2500
+
+# select hard disk for partitioning
+> $TMP
+
+###NUMHD=1
+###HARDDISKS="hda mon_disque"
+> $TMP
+NUMHD=0
+for p in sda sdb sdc sdd sde sdf hda hdb hdc hdd hde hdf ; do
+  [ -e /dev/$p ] || continue
+  case "$p" in
+    hd?)
+      if [ "`cat /proc/ide/$p/media`" = "disk" ] ; then
+        echo "$p `tr ' ' _ </proc/ide/$p/model`" >> $TMP
+        NUMHD=$[NUMHD+1]
+      fi
+      ;;
+    sd?)
+      ##x="`scsi_info /dev/$p | grep MODEL | tr ' ' _`"
+      ##x=${x#*\"}
+      ##x=${x%\"*}
+      echo "$p unknown" >> $TMP
+      NUMHD=$[NUMHD+1]
+      ;;
+    *) ;;
+  esac
+done
+HARDDISKS="`cat $TMP`"
+
+case "$ORIG_LANGUAGE" in
+de|at|ch)
+T1="Partitionieren"
+M1="Wählen Sie eine Festplatte aus (Leertaste zum Ankreuzen):"
+;;
+es)
+T1="Particionar el disco duro"
+M1="Seleccione un disco duro (La barra espaciadora selecciona):"
+;;
+fr)
+T1="Partitionnement"
+M1="Choisissez un disque dur (touche Espace pour choisir):"
+;;
+se)
+T1="Partitionering av hårddisk"
+M1="Välj en hårddisk (Välj med mellanslagstangenten):"
+;;
+*)
+T1="Partition hard disk"
+M1="Choose a hard disk (Space bar selects):"
+;;
+esac
+if [ -z "$HDCHOICE" ]; then
+  $DIA --backtitle "$BT" --title "$T1" --radiolist "$M1" 16 60 $NUMHD \
+  $(echo "$HARDDISKS" | while read p model ; do echo "$p" "$model" off ; done) \
+  2> $TMP
+  HDCHOICE="`cat $TMP`"
+fi
+case "$ORIG_LANGUAGE" in
+de|at|ch)
+M1="Sie haben keine Festplatte ausgewählt. Das Skript wird beendet."
+;;
+es)
+M1="No se ha seleccionado un disco duro. El script finalizará."
+;;
+fr)
+M1="Aucun disque dur choisi. Le script va être terminé."
+;;
+se)
+M1="Ingen hårddisk vald. Skriptet avbryts."
+;;
+*)
+M1="No hard disk chosen. The script will be terminated."
+;;
+esac
+if [ -z "$HDCHOICE" ] ; then
+  $DIA --backtitle "$BT" --title "$T1" --msgbox "$M1" 15 40
+  rm -f $TMP
+  exit 0
+fi
+###x=$(fdisk -l /dev/$HDCHOICE 2>/dev/null | grep " heads.* sectors.* cylinders")
+###HDS=${x%% heads*}
+###HDS=${HDS##* }
+###SECT=${x%% sectors*}
+###SECT=${SECT##* }
+###CYLS=${x% cylinders}
+###CYLS=${CYLS##* }
+###case "$ORIG_LANGUAGE" in
+###de|at|ch)
+###M1="Sie haben /dev/$HDCHOICE gewählt. \
+###Die Platte hat eine Kapazität von \
+###$[CYLS*HDS*SECT/2048] MB. \
+###Das Partitionierungsprogramm \
+###cfdisk wird jetzt gestartet."
+###;;
+###es)
+###M1="Disco duro /dev/$HDCHOICE seleccionado. \
+###Capacidad de este dispositivo: \
+###$[CYLS*HDS*SECT/2048] MB. \
+###Ahora se arrancará la herramienta cfdisk \
+###de particionado."
+###;;
+###fr)
+###M1="Le disque dur /dev/$HDCHOICE a été choisi. \
+###Sa capacité est de: \
+###$[CYLS*HDS*SECT/2048] MB. \
+###L'outil de partitionnement \
+###cfdisk va être lancé maintenant."
+###;;
+###se)
+###M1="Hårddisken /dev/$HDCHOICE är vald. \
+###Storleken är: \
+###$[CYLS*HDS*SECT/2048] MB. \
+###Partitioneringsprogrammet \
+###cfdisk startas nu."
+###;;
+###*)
+###M1="Hard disk /dev/$HDCHOICE chosen. \
+###Capacity of this device: \
+###$[CYLS*HDS*SECT/2048] MB. \
+###The partitioning tool \
+###cfdisk will be launched now."
+###;;
+###esac
+###$DIA --backtitle "$BT" --title "$T1" --msgbox "$M1" 15 40
+###if [ $MODE = text ] ; then
+###  (
+###  LANG="$ORIG_LANG"
+###  LANGUAGE="$ORIG_LANGUAGE"
+###  LC_ALL="$ORIG_LC_ALL"
+###  cfdisk /dev/$HDCHOICE
+###  )
+###else
+###  (
+###  LANG="$ORIG_LANG"
+###  LANGUAGE="$ORIG_LANGUAGE"
+###  LC_ALL="$ORIG_LC_ALL"
+###  xterm -fn 10x20 -e cfdisk /dev/$HDCHOICE
+###  )
+###fi
+
+# select root partition (create filesystem)
+> $TMP
+fdisk -l /dev/$HDCHOICE | grep "^/dev.*Linux$" | tr -d '*' |
+while read dev x x size x
+do
+  size=${size%+}
+  echo $dev $[size/1024]_MB off >> $TMP
+done
+NUMEXT2="`wc -l <$TMP`"
+EXT2PART="`cat $TMP`"
+case "$ORIG_LANGUAGE" in
+de|at|ch)
+T1="Filesystem anlegen"
+M1="Es wurde keine Linux-Partition auf der gewählten Platte gefunden. Das Skript wird beendet."
+;;
+es)
+T1="Crear sistema de ficheros"
+M1="No se pudo encontrar ninguna partición Linux en el disco duro seleccionado. El script finalizará."
+;;
+fr)
+T1="Création du système de fichiers"
+M1="Aucune partition Linux trouvée sur le disque dur sélectionné. Le script va être terminé."
+;;
+se)
+T1="Formatera Linuxpartition"
+M1="Kunde inte hitta en Linux partition på den valda hårddisken. Skriptet avbryts."
+;;
+*)
+T1="Create filesystem"
+M1="No Linux partition could be found on the chosen hard disk. The script will be terminated."
+;;
+esac
+if [ $NUMEXT2 = 0 ] ; then
+  $DIA --backtitle "$BT" --title "$T1" --msgbox "$M1" 15 40
+  rm -f $TMP
+  exit 0
+fi
+case "$ORIG_LANGUAGE" in
+de|at|ch)
+M1="Wählen Sie die Rootpartition aus:"
+;;
+es)
+M1="Elija la partición raíz:"
+;;
+fr)
+M1="Choisissez la partition root:"
+;;
+se)
+M1="Välj partition till Linux (rootpartitionen):"
+;;
+*)
+M1="Choose the root partition:"
+;;
+esac
+if [ -z "$FSCHOICE" ]; then
+  $DIA --backtitle "$BT" --title "$T1" --radiolist "$M1" 16 60 $NUMEXT2 \
+  $EXT2PART 2> $TMP
+  FSCHOICE="`cat $TMP`"
+fi
+case "$ORIG_LANGUAGE" in
+de|at|ch)
+M1="Sie haben keine Partition ausgewählt. Das Skript wird beendet."
+;;
+es)
+M1="No se ha seleccionado ninguna partición. El script finalizará."
+;;
+fr)
+M1="Aucune partition choisie. Le script va être terminé."
+;;
+se)
+M1="Ingen partition vald. Skriptet avbryts."
+;;
+*)
+M1="No partition chosen. The script will be terminated."
+;;
+esac
+if [ -z "$FSCHOICE" ] ; then
+  $DIA --backtitle "$BT" --title "$T1" --msgbox "$M1" 15 40
+  rm -f $TMP
+  exit 0
+fi
+size=$(echo "$EXT2PART" | grep "$FSCHOICE")
+size=${size%%_*}
+size=${size##* }
+case "$ORIG_LANGUAGE" in
+de|at|ch)
+M1="Die gewählte Partition ist kleiner als $FSMIN MB. Das Skript wird beendet."
+;;
+es)
+M1="La partición seleccionada es menor que $FSMIN MB. El script finalizará."
+;;
+fr)
+M1="La partition choisie est inférieure à $FSMIN MB. Le script va être terminé."
+;;
+se)
+M1="Den valda partitionen är mindre än $FSMIN MB. Skriptet avbryts."
+;;
+*)
+M1="The chosen partition is smaller than $FSMIN MB. The script will be terminated."
+;;
+esac
+if [ $size -lt $FSMIN ] ; then
+  $DIA --backtitle "$BT" --title "$T1" --msgbox "$M1" 15 40
+  rm -f $TMP
+  exit 0
+fi
+
+# select filesystem type
+FSTYPE=ext2
+sleep 2
+dd if=/dev/zero of=$FSCHOICE bs=1k count=16 >/dev/null 2>&1
+sync
+case $FSTYPE in
+  xfs)
+    mkfs.$FSTYPE -f $FSCHOICE 2> $TMP
+    x=$?
+  ;;
+  reiserfs)
+    echo y | mkfs.$FSTYPE $FSCHOICE 2> $TMP
+    x=$?
+  ;;
+  *)
+    mkfs.$FSTYPE $FSCHOICE 2> $TMP
+    x=$?
+    case $FSTYPE in *ext*) tune2fs -O ^dir_index $FSCHOICE;; esac
+  ;;
+esac
+if [ $x != 0 ] ; then
+  case "$ORIG_LANGUAGE" in
+  de|at|ch)
+  M1="Beim Anlegen des Filesystems ist ein Fehler aufgetreten. Hier die Meldungen von mkfs:"
+  ;;
+  es)
+  M1="Ocurrió un error mientras se creaba el sistema de ficheros. Algunos mensajes de mkfs:"
+  ;;
+  fr)
+  M1="Une erreur est intervenue pendant la création du système de fichiers. Quelques messages de mkfs:"
+  ;;
+  se)
+  M1="Fel under formateringen. Meddelande från mkfs:"
+  ;;
+  *)
+  M1="An error occurred while creating the filesystem. Some messages from mkfs:"
+  ;;
+  esac
+  $DIA --backtitle "$BT" --title "$T1" --msgbox "$M1 `tail -8 $TMP`" 15 60
+  rm -f $TMP
+  exit 0
+fi
+
+case "$ORIG_LANGUAGE" in
+de|at|ch)
+T1="Dateien kopieren"
+M1="Jetzt werden die Dateien der Knoppix-CD auf die Rootpartition kopiert. Dies kann je nach Geschwindigkeit der Festplatte und des CDROM-Laufwerks 10-40 Minuten dauern."
+M2="Kopiere Dateien..."
+;;
+es)
+T1="Copiar archivos"
+M1="Ahora se copiarán todos los archivos del CD de Knoppix al disco duro. Esto lleverá de 10 a 40 minutos, dependiendo del hardware."
+M2="Copiando archivos..."
+;;
+fr)
+T1="Copier les fichiers"
+M1="Copie maintenant tous les fichiers du CD sur le disque dur. Celà va prendre de 10 à 40 minutes, selon le matériel."
+M2="Copie les fichiers..."
+;;
+se)
+T1="Kopiera filerna"
+M1="Kopierar nu alla filerna från Knoppix CDn till hårddisken. Detta kommer ta 10 till 40 minuter beroende på datorn."
+M2="Kopierar filer..."
+;;
+*)
+T1="Copy files"
+M1="Now copying all files from the Knoppix CD to hard disk. This will take 10 to 40 minutes, depending on the hardware."
+M2="Copying files..."
+;;
+esac
+###$DIA --backtitle "$BT" --title "$T1" --msgbox "$M1" 15 60
+
+mkdir -p $TR >/dev/null 2>&1
+mount -t $FSTYPE $FSCHOICE $TR 2> $TMP
+if [ $? != 0 ] ; then
+  case "$ORIG_LANGUAGE" in
+  de|at|ch)
+  M1="Beim Einbinden der Rootpartition $FSCHOICE ist ein Fehler aufgetreten. Hier die Meldungen von mount:"
+  ;;
+  es)
+  M1="Ocurrió un error mientras se montaba la partición raíz $FSCHOICE. Algunos mensajes de mount:"
+  ;;
+  fr)
+  M1="Une erreur est intervenue lors du montage de la partition root $FSCHOICE. Quelques messages de mount:"
+  ;;
+  se)
+  M1="Fel vid montering av $FSCHOICE rootpartitionen. Meddelande från mount:"
+  ;;
+  *)
+  M1="An error occurred while mounting the root partition $FSCHOICE. Some messages from mount:"
+  ;;
+  esac
+  $DIA --backtitle "$BT" --title "$T1" --msgbox "$M1 `tail -8 $TMP`" 15 60
+  rm -f $TMP
+  exit 0
+fi
+# now the root filesystem is filled with data
+echo -n "$M2"
+###(cd /KNOPPIX ; cp -a * $TR ; sync) &
+
+(cp -dpR /mnt/cloop/* /mnt/custom/ ; sync) &
+
+progressbar $!
+
+mkdir -p /mnt/custom/boot/
+cp /mnt/cdrom/isolinux/vmlinuz1 /mnt/custom/boot
+cp /mnt/cdrom/isolinux/initrd1 /mnt/custom/boot
+
+#rotdash $!
+# two beeps
+echo -ne "\007" >/dev/tty1
+echo -ne "\007" >/dev/tty1
+case "$ORIG_LANGUAGE" in
+de|at|ch)
+T1="Dateien kopiert"
+M1="Der Kopiervorgang ist abgeschlossen."
+;;
+es)
+T1="Copia finalizada"
+M1="El proceso de copia ha finalizado."
+;;
+fr)
+T1="Copie terminée"
+M1="Le processus de copie des fichier est terminé."
+;;
+se)
+T1="Kopieringen avslutad"
+M1="Kopieringen är klar."
+;;
+*)
+T1="Copying finished"
+M1="The copying process has finished."
+;;
+esac
+###$DIA --backtitle "$BT" --title "$T1" --msgbox "$M1" 15 40
+
+# remove hotplug if no USB module is loaded
+grep -E "usb|uhci|ohci" /proc/modules >/dev/null 2>&1
+if [ $? != 0 ] ; then
+  rm -f $TR/etc/rc5.d/S??hotplug
+fi
+# remove cardmgr if no PCMCIA module is loaded
+grep "pcmcia_core" /proc/modules >/dev/null 2>&1
+if [ $? != 0 ] ; then
+  rm -f $TR/etc/rc5.d/S??pcmcia
+fi
+
+# create /etc/fstab
+cat <<EOF >$TR/etc/fstab
+# /etc/fstab: filesystem table.
+#
+# filesystem  mountpoint  type  options  dump  pass
+EOF
+case $FSTYPE in
+  reiserfs|xfs)
+  echo "$FSCHOICE  /  $FSTYPE  defaults  0  1" >>$TR/etc/fstab
+  ;;
+  *)
+  echo "$FSCHOICE  /  $FSTYPE  defaults,errors=remount-ro  0  1" >>$TR/etc/fstab
+  ;;
+esac
+cat <<EOF >>$TR/etc/fstab
+proc  /proc  proc  defaults  0  0
+EOF
+
+# set hostname
+case "$ORIG_LANGUAGE" in
+de|at|ch)
+T1="Rechnernamen setzen"
+M1="Geben Sie den Rechnernamen ein (ohne Domain-Anhang):"
+;;
+es)
+T1="Asignar nombre de host"
+M1="Dé un nombre de host a esta máquina (sin el dominio añadido):"
+;;
+fr)
+T1="Nom de la machine"
+M1="Saisissez un nom pour cette machine (sans le domaine):"
+;;
+se)
+T1="Datorns namn (host)"
+M1="Ge datorn ett namn (hostname), (utan domain):"
+;;
+*)
+T1="Set hostname"
+M1="Give a host name for this machine (without domain appended):"
+;;
+esac
+###$DIA --backtitle "$BT" --title "$T1" --inputbox "$M1" 15 60 $DEFHNAME 2>$TMP
+###HNAME="`cat $TMP`"
+###[ -z "$HNAME" ] && HNAME=$DEFHNAME
+HNAME=$DEFHNAME
+cat <<EOF >$TR/etc/hosts
+127.0.0.1	$HNAME localhost
+
+# The following lines are desirable for IPv6 capable hosts
+# (added automatically by netbase upgrade)
+
+::1     ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+ff02::3 ip6-allhosts
+EOF
+echo "$HNAME" > $TR/etc/hostname
+echo "$HNAME" > $TR/etc/mailname
+
+# change home directory of root to /root
+sed -e 's,/home/root,/root,g' /etc/passwd > $TR/etc/passwd
+
+INITRD="initrd=/boot/initrd1"
+
+# set up LILO in chroot environment
+case "$ORIG_LANGUAGE" in
+fr)
+T1="Mise en place du chargeur de démarrage"
+M1="Voulez-vous installer le chargeur de démarrage (LILO) ?"
+;;
+*)
+T1="Set up boot loader"
+M1="Do you want to install the boot loader (LILO)?"
+;;
+esac
+###$DIA --backtitle "$BT" --title "$T1" --yesno "$M1" 15 60
+###x=$?
+x=1
+if [ $x = 0 ] ; then
+  if stringinstring "hd[a-d]" "$FSCHOICE"
+  then
+    LBOOT=${FSCHOICE%%?[1-9]*}a # Set MBR to /dev/hda
+  else
+    LBOOT=${FSCHOICE%%[1-9]*}
+  fi
+  # Make a backup of the old mbr
+  dd if=$LBOOT of=$TR/boot/knoppix-old-mbr.$(date +"%s") bs=512 count=1
+else
+  LBOOT=$FSCHOICE
+fi
+BKERNEL="/boot/vmlinuz1"
+[ ! -e "$TR/vmlinuz" ] && ln -sf "$BKERNEL" "$TR/vmlinuz"
+
+rm -f $TR/etc/lilo.conf
+
+APPEND_SCSI="hda=scsi hdb=scsi hdc=scsi hdd=scsi hde=scsi hdf=scsi"
+APPEND_SCSI="$APPEND_SCSI hdg=scsi hdh=scsi"
+APPEND_ACCEL=""
+if [ ! -z "$ORIG_LANGUAGE" ]; then
+  APPEND_KMAP="setkmap=$ORIG_LANGUAGE"
+fi
+if [ -z "$APPEND_AUTORUNS" ]; then
+  APPEND_AUTORUNS="autoruns=no"
+fi
+APPEND="$APPEND_SCSI $APPEND_ACCEL $APPEND_KMAP $APPEND_OPTIONS"
+APPEND="$APPEND apm=power-off nomce"
+
+cat <<EOF >$TR/etc/lilo.conf
+boot=$FSCHOICE
+$VGAMODE
+prompt
+timeout=50
+
+image=$BKERNEL
+	label=Linux
+	root=$FSCHOICE
+	read-only
+	$INITRD
+        append = "$APPEND $APPEND_AUTORUNS setroot=$FSCHOICE"
+
+image=$BKERNEL
+	label=Sauvegarde
+	root=$FSCHOICE
+	read-only
+	$INITRD
+        append = "$APPEND setroot=$FSCHOICE autoruns=autorun3"
+
+image=$BKERNEL
+	label=Restauration
+	root=$FSCHOICE
+	read-only
+	$INITRD
+        append = "$APPEND setroot=$FSCHOICE autoruns=autorun4"
+
+EOF
+
+case "$ORIG_LANGUAGE" in
+de|at|ch)
+echo "Der Bootloader (LILO) wird eingerichtet..."
+;;
+es)
+echo "Instalando el cargador de arranque (LILO)..."
+;;
+fr)
+echo "Met en place le chargeur de démarrage (LILO)..."
+;;
+se)
+echo "Installerar bootmanager (LILO)..."
+;;
+*)
+echo "Setting up boot loader (LILO)..."
+;;
+esac
+lilo -w -r $TR
+# copy LILO bootsector to a file (for boot.ini in NT/2k/XP)
+if [ $LBOOT = $FSCHOICE ] ; then
+  dd if=$LBOOT of=$TR/linboot.img bs=512 count=1
+fi
+
+# detach all loop devices (otherwise $FSCHOICE will be busy)
+for i in 7 6 5 4 3 2 1 0
+do
+  losetup -d /dev/loop$i >/dev/null 2>&1
+done
+
+[ -x "$POST_SCRIPT" ] && $POST_SCRIPT
+
+# unmount root partition
+umount $TR >/dev/null 2>&1
+
+rm -f $TMP
+
+case "$ORIG_LANGUAGE" in
+fr)
+T1="Terminée"
+M1="L'installation est terminée. Voulez vous redémarrer ?"
+;;
+*)
+T1="Finished"
+M1="The installation process is finished. Do you wish to reboot?"
+;;
+esac
+###$DIA --backtitle "$BT" --title "$T1" --msgbox "$M1" 15 40
+case "$REBOOT" in
+yes)
+  shutdown -r now
+  ;;
+no)
+  ;;
+*)
+$DIA --backtitle "$BT" --title "$T1" --yesno "$M1" 15 60
+x=$?
+clear
+if [ $x = 0 ] ; then
+	shutdown -r now
+fi
+esac
+exit 0

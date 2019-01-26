@@ -1,0 +1,15 @@
+#!/sbin/openrc-run
+
+depend()
+{
+	after sysresccd mdadm
+}
+
+start()
+{
+	ebegin "Starting SystemRescueCd autorun scripts"
+	export LANG=en_US.utf8
+	echo "Starting autorun at $(date +%Y%m%d-%H:%M:%S)" > /var/log/autorun.log
+	# run script provided by sys-apps/sysresccd-scripts
+	/usr/sbin/autorun
+}

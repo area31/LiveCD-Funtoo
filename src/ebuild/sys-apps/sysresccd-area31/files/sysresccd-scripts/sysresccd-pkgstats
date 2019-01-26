@@ -1,0 +1,63 @@
+#!/bin/bash
+# Distributed under the terms of the GNU General Public License v2
+
+DO_EIX=1
+DO_SIZ=1
+DO_LST=1
+
+FILEPATH_PKG='/root/sysresccd-pkg.txt'
+FILEPATH_SIZ='/root/sysresccd-siz.txt'
+FILEPATH_EIX='/root/sysresccd-eix.txt'
+FILEPATH_LST='/root/sysresccd-lst.txt'
+
+# =========================================================================
+# ======================= create the package list =========================
+# =========================================================================
+if [ -n "$(which equery)" ]
+then
+	equery -q -C list -i '*' | grep -v '^virtual' >|  ${FILEPATH_PKG}
+fi
+
+# -------------------------------------------------------------------------
+if [ -n "$(which eix)" ] && [ "${DO_EIX}" = '1' ]
+then
+	echo "---> generating ${FILEPATH_EIX}"
+	/usr/bin/eix-update || echo "eix-update failed"
+	FORMAT='<category>/<name>-<installedversions>' eix -I -n | grep -v '^virtual' | \
+		sed -r -e 's|[0-9]{2}:[0-9]{2}:[0-9]{2} [AMP ]*[0-9]{2}/[0-9]{2}/[0-9]{0,4}| : |g' -e 's| : $||g' -e 's|^\t{2,}|  |g' | \
+		grep '^[a-z0-9]*-[a-z0-9]*/[a-z0-9]*' | sed -e 's!\[?\]!!g' > ${FILEPATH_EIX}
+fi
+
+# -------------------------------------------------------------------------
+if [ -n "$(which equery)" ] && [ "${DO_LST}" = '1' ]
+then
+	echo "---> generating ${FILEPATH_LST}"
+	for curpkg in $(cat ${FILEPATH_PKG})
+	do
+		echo "${curpkg}"
+		sizraw=$(equery -q -C size -b ${curpkg} | xargs | sed -r -e 's!.*size\(([0-9]*)\).*!\1!g')
+		sizfmt=$(printf "%d kb" $((sizraw/1024)))
+		echo '' >> "${FILEPATH_LST}"
+		echo "=======================${curpkg} (size=${sizfmt})======================" >> "${FILEPATH_LST}"
+		equery -C files "=${curpkg}" 2>/dev/null | grep '^/' >> "${FILEPATH_LST}"
+	done
+fi
+
+# -------------------------------------------------------------------------
+if [ -n "$(which equery)" ] && [ "${DO_SIZ}" = '1' ]
+then
+	echo "---> generating ${FILEPATH_SIZ}"
+	for curpkg in $(cat ${FILEPATH_PKG})
+	do
+		pkgfmt=$(echo ${curpkg} | sed -r -e 's!^([A-Za-z0-9-]*)\/([+A-Za-z0-9-]*)-([^-]*)(-r[0-9]){0,2}.*!\1:\2:\3\4 !g')
+		pkgcat=$(echo ${pkgfmt} | cut -d: -f1)
+		pkgnam=$(echo ${pkgfmt} | cut -d: -f2)
+		pkgver=$(echo ${pkgfmt} | cut -d: -f3)
+		sizraw=$(equery -q -C size -b ${curpkg} | xargs | sed -r -e 's!.*size\(([0-9]*)\).*!\1!g')
+		sizfmt=$(printf "%0.6d kb" $((sizraw/1024)))
+		output="${sizfmt} --> ${curpkg} --- ${pkgcat}:${pkgnam}:${pkgver}"
+		echo ${output} >> ${FILEPATH_SIZ}
+		echo ${output}
+	done
+fi
+

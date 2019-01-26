@@ -1,0 +1,239 @@
+#!/bin/sh
+
+#################################################################################
+# Area31 Hackerspace
+#
+# BSD License - do whatever you want with this script
+#
+# As always, bug reports, suggestions, etc: raphaelbastos@hackstore.com.br
+#################################################################################
+
+export HISTTIMEFORMAT="%h/%d - %H:%M:%S - "
+
+DIR_MNT="/mnt/custom"
+TMP="/tmp/sysresccd-area31"
+
+if [ ! -d ${TMP} ]; then
+	mkdir -p ${TMP}
+fi
+
+# clear tmpdir
+rm -f ${TMP}/SeT*
+rm -f ${TMP}/hdset
+
+# If a keyboard map has been previously configured, it restores the data
+if [ -r ${TMP}/Pkeymap ]; then
+	cp ${TMP}/Pkeymap ${TMP}/SeTkeymap
+fi
+
+# turn on color menus
+echo "on" > ${TMP}/SeTcolor
+export COLOR=on
+
+# Activate all LVM VGs
+vgchange -ay 1> /dev/null 2> /dev/null
+
+# Check if Linux partitions exist
+if fdisk -l 2> /dev/null | egrep -i 'Linux$' 1> /dev/null 2> /dev/null ; then
+	fdisk -l 2> /dev/null | egrep -i 'Linux$' | sort 1> $TMP/SeTplist 2> /dev/null
+else
+	dialog --title " NO LINUX PARTITION DETECTED " \
+	--msgbox "\n It seems that there are no Linux partitions on this machine.\
+	\n\n You will need to create at least one for RescueCD Area31 Tools\n\
+	 To do it you'll need to select 'PARTITION-EDITOR' option in main menu\n\
+	 and create the partitions using  'cfdisk' or 'fdisk'\n\n\
+	 For more informations select 'HELP' option in the following menu.\n\n\
+	 Remember creating a SWAP partition with at least 2GB" 15 71
+fi
+
+################################################################
+# menu
+
+while [ 0 ]; do
+	dialog --title " RescueCD Area31 Tools " --item-help --menu "Welcome to RescueCD Area31 Tools!\n\n\
+	Select an option using keys [UP]/[DOWN] and press [SPACE] or [ENTER].\n\
+	Alternate keys can be used as also: [+]/[-] and [TAB] respectively." 0 0 0 \
+	"HELP" "Obtain help to use RescueCD Area31 Tools" "Obtain help to use RescueCD Area31 Tools" \
+	"SHOW" "Show active disks and swap" "Show active disks and swap" \
+	"KEYMAP" "Configure keymap" "Default: \"us\"" \
+	"PARTITION-EDITOR" "Partition editor" "CAUTION: Those tools can cause IRREPARABLE DAMAGE on your hard disk!"  \
+	"FORMAT" "Format partition \"/mnt/custom\"" "REMEMBER: Partition your disk before formatting" \
+	"ADD-SWAP" "Configure and mount SWAP" "REMEMBER: Partition your disk and create a type \"82 (SWAP)\" partition before mounting SWAP" \
+	"ADD-TARGET" "Configure partition \"/mnt/custom\"" "REMEMBER: Partition the disk and format it before mounting \"/mnt/custom\"" \
+	"EXTRACT" "Extract files from image \"sysrcd.dat\" to \"/mnt/custom\" directory" "REMEMBER: Select \"ADD-TARGET\" option on the main menu before extracting the image to mount \"/mnt/custom\"" \
+	"CHROOT" "Customize your RescueCD using chroot" "REMEMBER: Select \"ADD-TARGET\" option on the main menu before chrooting into \"/mnt/custom\"" \
+	"GEN-ISO" "Generate a new custom ISO image" "REMEMBER: Select \"ADD-TARGET\" on the main menu to mount \"/mnt/custom\" before generating an ISO"  \
+	"UMOUNT" "Unmount all disks including swap." "Recommended before reboot or halt" \
+	"EXIT" "Exit RescueCD Area31 Tools" "ATTENTION: It's recommended to unmount all disks including swap before exiting. Select \"UMOUNT\" option on the main menu to unmount all disks including swap."  2> $TMP/hdset
+	if [ ! $? = 0 ]; then
+		exit
+	fi
+	MAINSELECT="`cat $TMP/hdset`"
+	#rm $TMP/hdset
+
+	################################################################
+	# HELP
+
+	if [ "${MAINSELECT}" = "HELP" ]; then
+		sh /usr/share/sysresccd-area31/sysresccd-area31-help
+	fi
+
+	################################################################
+	# SHOW
+
+	if [ "${MAINSELECT}" = "SHOW" ]; then
+		sh /usr/share/sysresccd-area31/sysresccd-area31-showmount
+	fi
+
+	################################################################
+	# PARTITION-EDITOR
+
+	if [ "${MAINSELECT}" = "PARTITION-EDITOR" ]; then
+		dialog --title " WELCOME TO PARTITION-EDITOR " --msgbox "\n\
+		RescueCD Area31 Tools has some requirements:\n\n\
+		1. Create at least one Linux partition.\n\
+		2. If possible, create a SWAP partition (recommended).\n\n\
+		Press [ENTER] to continue" 12 60
+		sh /usr/share/sysresccd-area31/sysresccd-area31-partition
+	fi
+
+	################################################################
+	# FORMAT
+
+	if [ "${MAINSELECT}" = "FORMAT" ]; then
+		dialog --title " RescueCD Area31 Tools " --msgbox "\n Format partition (required to chroot),\n\
+		Press [ENTER] to continue..." 8 55
+		sh /usr/share/sysresccd-area31/sysresccd-area31-format
+	fi
+
+	#################################################################
+	# KEYMAP
+
+	if [ "${MAINSELECT}" = "KEYMAP" ]; then
+		dialog --title " RescueCD Area31 Tools " --msgbox "\n Configure keymap,\n\
+		Press [ENTER] to continue..." 8 42
+		sh /usr/share/sysresccd-area31/sysresccd-area31-keymap
+	fi
+
+	################################################################
+
+	# SWAP
+
+	if [ "${MAINSELECT}" = "ADD-SWAP" ]; then
+		dialog --title " RescueCD Area31 Tools " --msgbox "\n Configure SWAP,\n\
+		Press [ENTER] to continue..." 8 42
+		sh /usr/share/sysresccd-area31/sysresccd-area31-swap
+	fi
+
+	################################################################
+	# ADD-TARGET
+
+	if [ "${MAINSELECT}" = "ADD-TARGET" ]; then
+		dialog --title " RescueCD Area31 Tools " --msgbox "\n Mount disk for chroot environment,\n\
+		Press [ENTER] to continue..." 8 55
+		sh /usr/share/sysresccd-area31/sysresccd-area31-targets mount-disk
+	fi
+
+	#################################################################
+	# EXTRACT
+
+	if [ "${MAINSELECT}" = "EXTRACT" ]; then
+		var=0
+		var="$(mount | grep -w "${DIR_MNT}" | wc -l)"
+
+		if [ "$var" -ne 0 ];then
+			dialog --title " RescueCD Area31 Tools " --no-label Cancel --yes-label Continue --yesno \
+			"\nExtract sysrcd.dat to /mnt/custom,\nPress [ENTER] to continue..." 8 65
+			if [ "$?" -eq 0 ]; then
+				/usr/sbin/sysresccd-custom extract
+			fi
+		else
+			dialog --title " ERROR CONFIGURING RESCUECD " --msgbox "\n\
+			RescueCD Area31 Tools needs a mounted "/mnt/custom" partition:\n\n\
+			1. Select at least one partition to extract sysrcd.dat image\n\
+			from RescueCD using "ADD-TARGET" option on main menu\n\n\
+			2. If possible, create a SWAP partition (recommended)\n
+			\n
+			if necessary, configure keymap\n\n
+			Press [ENTER] return to main menu" 16 76
+			continue
+		fi
+	fi
+
+	#################################################################
+	# CHROOT
+
+	if [ "${MAINSELECT}" = "CHROOT" ]; then
+		var=0
+		var="$(mount | grep -w "${DIR_MNT}" | wc -l)"
+
+		if [ "$var" -ne 0 ];then
+			dialog --title " RescueCD Area31 Tools " --no-label Cancel --yes-label Continue --yesno \
+			"CHROOT into \"/mnt/custom\",\nPress [ENTER] to continue..." 8 55
+			if [ "$?" -eq 0 ]; then
+				sh /usr/share/sysresccd-area31/sysresccd-area31-targets make-chroot
+			fi
+		else
+			dialog --title " ERROR CONFIGURING RESCUECD " --msgbox "\n\
+			RescueCD Area31 Tools needs a mouted "/mnt/custom" partition:\n\n\
+			1. Select at least one partition for chroot environment\n\
+			from RescueCD using "ADD-TARGET" option on the main menu\n\n\
+			2. If possible, create a SWAP partition (recommended)\n
+			\n
+			if necessary, configure keymap\n\n
+			Press [ENTER] return to main menu" 16 76
+			continue
+		fi
+	fi
+
+	#################################################################
+	# GEN-ISO
+
+	if [ "${MAINSELECT}" = "GEN-ISO" ]; then
+		var=0
+		var="$(mount | grep -w "${DIR_MNT}" | wc -l)"
+
+		if [ "$var" -ne 0 ];then
+			dialog --title " RescueCD Area31 Tools " --no-label Cancel --yes-label Continue --yesno \
+			"\nMake new ISO on /mnt/custom/customcd/isofile,\nPress [ENTER] to continue..." 8 55
+			if [ "$?" -eq 0 ]; then
+				sh /usr/share/sysresccd-area31/sysresccd-area31-targets make-iso
+			fi
+		else
+			dialog --title " ERROR CONFIGURING RESCUECD " --msgbox "\n\
+			RescueCD Area31 Tools needs a mouted "/mnt/custom" partition:\n\n\
+			1. Select at least one partition to generate ISO\n\
+			from RescueCD using "ADD-TARGET" option on main menu\n\n\
+			2. If possible, create a SWAP partition (recommended)\n
+			\n
+			if necessary, configure keymap\n\n
+			Press [ENTER] return to main menu" 16 76
+			continue
+		fi
+	fi
+
+	#######################################################
+	# Umount all partitions
+
+	if [ "${MAINSELECT}" = "UMOUNT" ]; then
+		dialog --title " RescueCD Area31 Tools " --msgbox "\n Umount all partitions, including '/mnt/custom'!,\n\
+		Press [ENTER] to continue..." 8 62
+		sh /usr/share/sysresccd-area31/sysresccd-area31-showmount
+		sh /usr/share/sysresccd-area31/sysresccd-area31-targets umount-disk
+		sh /usr/share/sysresccd-area31/sysresccd-area31-showmount
+	fi
+
+	if [ "${MAINSELECT}" = "EXIT" ]; then
+		RESCUECD_MOUNTED=$( mount |grep -w /mnt/custom|wc -l  )
+
+		sh /usr/share/sysresccd-area31/sysresccd-area31-targets umount-chroot
+		# umount all partitions
+		if [ "${RESCUECD_MOUNTED}" -ne 0 ];then
+			break
+		else
+			break
+		fi
+	fi
+done # end of menu
+#######################################################################
+# end script

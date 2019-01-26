@@ -1,0 +1,103 @@
+#!/sbin/openrc-run
+
+debugnetcfg2='/var/log/netconfig2.log'
+
+depend()
+{
+	before autorun
+	after sysresccd
+}
+
+log_netconfig2()
+{
+	echo "netconfig2 @ $(date +%Y%m%d-%H:%M:%S): ${1}" >> ${debugnetcfg2}
+}
+
+print_and_log_netconfig2()
+{
+	echo "netconfig2 @ $(date +%Y%m%d-%H:%M:%S): ${1}" >> ${debugnetcfg2}
+	echo "netconfig2: ${1}"
+}
+
+start()
+{
+	ebegin "Performing network configuration"
+
+	log_netconfig2 "Starting netconfig2..."
+
+	CMDLINE="$(cat /proc/cmdline)"
+
+	# ---- run DHCP if asked on cmdline (dodhcp) ----
+	# we must run dhcp from bashlogin even if it has already been done in the initramfs since it updates
+	# system files such as resolv.conf
+	if echo "${CMDLINE}" | grep -q -F 'dodhcp'
+	then
+		DHCPHOSTNAME="$(hostname)"
+		DHCPDEVICES="$(awk -F: '/eth.:|tr.:|ath.:|wlan.:/{print $1}' /proc/net/dev 2>/dev/null)"
+		for opt in ${CMDLINE}
+		do
+			if echo "${opt}" | grep -q -F 'dhcphostname'
+			then
+				DHCPHOSTNAME=$(echo "${opt}" | cut -d= -f2)
+				print_and_log_netconfig2 "DHCPHOSTNAME=${DHCPHOSTNAME}"
+			fi
+			if echo "${opt}" | grep -q -F 'dodhcp='
+			then
+				DHCPDEVICES="$(echo ${opt} | cut -d= -f2 | sed -e 's/,/ /g')"
+				print_and_log_netconfig2 "DHCPDEVICES=${DHCPDEVICES}"
+			fi
+		done
+		
+		dhcpstate=''
+		attempts=1
+		maxattempts=20
+		while [ "${dhcpstate}" != 'ok' ] && [ "${attempts}" -lt "${maxattempts}" ] # retry until we get a dhcp address on at least one interface
+		do
+			for curdev in ${DHCPDEVICES}
+			do
+				# Try to find whether or not the link is connected
+				mac=$(ifconfig ${curdev} | grep HWaddr | awk '{print $5}')
+				if [ -n "$(which mii-tool)" ] && mii-tool ${curdev} 2>/dev/null | grep -qF 'link ok'
+				then
+					linkstate='link-ok'
+				elif [ -n "$(which mii-tool)" ] && mii-tool ${curdev} 2>/dev/null | grep -qF 'no link'
+				then
+					linkstate='no-link'
+				else # if not sure, set linkstate='unknown'
+					linkstate='unknown'
+				fi
+				print_and_log_netconfig2  "--- ${curdev}: link=${linkstate}, mac=${mac}"		
+				
+				# If the link is up, then try (even if another interface already had a dhcp address)
+				if [ "${linkstate}" != 'no-link' ]
+				then
+					print_and_log_netconfig2  "Attempt ${attempts} of ${maxattempts} to get a DHCP address on ${curdev}..."
+					cmd="dhcpcd -L -n -t 10 -h ${DHCPHOSTNAME} ${curdev}"
+					${cmd} ; res="$?"
+					print_and_log_netconfig2  "${cmd} --> ${res}"
+					[ "${res}" = '0' ] && dhcpstate='ok'
+				fi
+			done
+			
+			if [ "${dhcpstate}" != 'ok' ]
+			then
+				print_and_log_netconfig2 "Cannot get a DHCP address. Check the cables on the ethernet interfaces."
+			fi
+			
+			attempts=$((attempts+1))
+		done
+	fi
+	
+	# ---- configure the dns nameserver if requested ----
+	for curopt in ${CMDLINE}
+	do
+		if echo "${curopt}" | grep -q -E '^dns=[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$'
+		then
+			setdns="$(echo ${curopt} | sed -r -e 's!^dns=([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})$!\1!g')"
+			rm -f /etc/resolv.conf 2>/dev/null
+			echo "nameserver ${setdns}" > /etc/resolv.conf
+			print_and_log_netconfig2 "set nameserver to ${setdns}"
+		fi
+	done
+}
+

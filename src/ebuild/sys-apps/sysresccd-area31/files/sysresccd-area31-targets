@@ -1,0 +1,139 @@
+#!/bin/bash
+
+VERSION="0.2"
+MNTDIR="/mnt/custom/customcd/files"
+
+mountdisk(){
+sh /usr/share/sysresccd-area31/sysresccd-area31-umount
+sh /usr/share/sysresccd-area31/sysresccd-area31-mount
+}
+
+umountdisk(){
+sh /usr/share/sysresccd-area31/sysresccd-area31-umount
+swapoff -a
+}
+
+mkchroot(){
+
+CHECK_PROC="$(mount | grep -w "${MNTDIR}/proc" | wc -l)"
+if [ "${CHECK_PROC}" = "0" ]; then
+	mount -vo bind /proc ${MNTDIR}/proc
+fi
+
+CHECK_DEV="$(mount | grep -w "${MNTDIR}/dev" | wc -l)"
+if [ "${CHECK_DEV}" = "0" ]; then
+	mount -vo rbind /dev ${MNTDIR}/dev
+fi
+
+	CHECK_SYS="$(mount | grep -w "${MNTDIR}/sys" | wc -l)"
+if [ "${CHECK_SYS}" = "0" ]; then
+	mount -vo bind /sys ${MNTDIR}/sys
+fi
+
+	CHECK_PORTAGE="$(mount | grep -w "${MNTDIR}/var/git" | wc -l)"
+if [ "${CHECK_PORTAGE}" = "0" ]; then
+	mkdir -p /mnt/custom/meta-repo
+	mkdir -p ${MNTDIR}/var/git
+	mount -vo bind /mnt/custom/meta-repo/ ${MNTDIR}/var/git
+fi
+
+	CHECK_PORTAGE_CACHE="$(mount | grep -w "${MNTDIR}/var/cache/portage" | wc -l)"
+if [ "${CHECK_PORTAGE_CACHE}" = "0" ]; then
+	mkdir -p /mnt/custom/portage-chroot
+	mkdir -p ${MNTDIR}/var/cache/portage
+	mount -vo bind /mnt/custom/portage-chroot ${MNTDIR}/var/cache/portage
+fi
+
+	CHECK_KERNEL_DIR="$(mount | grep -w "${MNTDIR}/usr/src" | wc -l)"
+if [ "${CHECK_KERNEL_DIR}" = "0" ]; then
+	mkdir -p /mnt/custom/kernel-usr-src
+	mkdir -p ${MNTDIR}/usr/src
+	mount -vo bind /mnt/custom/kernel-usr-src ${MNTDIR}/usr/src
+fi
+
+if [ -e "${MNTDIR}/bin/bashlogin" ]; then
+	chroot ${MNTDIR} /bin/bashlogin
+else
+	chroot ${MNTDIR} /bin/bash
+fi
+
+}
+
+umountchroot(){
+umount -v ${MNTDIR}/proc ${MNTDIR}/sys ${MNTDIR}/var/cache/portage ${MNTDIR}/var/git ${MNTDIR}/usr/src
+umount -lv ${MNTDIR}/dev
+}
+
+mkiso(){
+
+# clean
+echo -e "\nCleaning Temporary files...\n"
+rm -rf ${MNTDIR}/var/cache/portage/distfiles/*
+rm -rf ${MNTDIR}/var/tmp/portage/*
+rm -rf ${MNTDIR}/root/nohup.* ${MNTDIR}/root/.bash_history ${MNTDIR}/root/.viminfo ${MNTDIR}/root/.bash_history
+rm -rf ${MNTDIR}/var/log/messages ${MNTDIR}/var/log/wtmp ${MNTDIR}/var/log/Xorg.0.log* ${MNTDIR}/var/log/dmesg ${MNTDIR}/var/log/rc.log
+rm -rf ${MNTDIR}/etc/ssh/*key*
+rm -rf ${MNTDIR}/root/.gitconfig
+mkdir -p ${MNTDIR}/root/.ssh
+rm -rf ${MNTDIR}/etc/skel
+cp -rp ${MNTDIR}/root ${MNTDIR}/etc/skel
+rm -rf ${MNTDIR}/tmp
+mkdir ${MNTDIR}/tmp
+chmod 777 ${MNTDIR}/tmp
+
+
+# umount
+echo -e "\nUmounting chroot....\n"
+umount ${MNTDIR}/proc ${MNTDIR}/sys
+umount -l ${MNTDIR}/dev
+umount ${MNTDIR}/var/git
+umount ${MNTDIR}/var/cache/portage
+umount ${MNTDIR}/usr/src
+
+sleep 1
+
+echo -e "\nCreating the new squashfs image...\n"
+
+sh /usr/sbin/sysresccd-custom squashfs
+echo created
+
+echo -e "\nCreating the new ISO image...\n"
+sh /usr/sbin/sysresccd-custom isogen funtoo-livecd-area31
+
+sleep 1
+
+sync
+
+echo -e "\nFinished.\n"
+read -n 1 -s -r -p "Press any key to continue"
+
+}
+
+
+case "$1" in
+    mount-disk)
+		mountdisk
+        ;;
+    umount-disk)
+		umountdisk
+        ;;
+    make-chroot)
+		mkchroot
+        ;;
+	umount-chroot)
+		umountchroot
+		;;
+    make-iso)
+		mkiso
+        ;;
+    version)
+        echo "4.0"
+        exit $?
+        ;;
+    *)
+        echo "Script to gen ISO."
+        echo ""
+        echo "Usage: $0 {mount-disk|make-chroot|make-iso|version|umount-disk|umount-chroot}"
+        exit 0
+        ;;
+esac

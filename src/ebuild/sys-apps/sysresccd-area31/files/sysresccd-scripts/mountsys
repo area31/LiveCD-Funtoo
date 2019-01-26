@@ -1,0 +1,578 @@
+#!/bin/bash
+#
+# (c) Pierre Dorgueil 2003
+# linux filesystem search & mount tool
+# for rescue systems
+#
+# may work for most linux systems, but
+#     **** NO GUARANTEE ****
+# that it will work at all for yours    
+#
+# "use at your own risk" (tm)
+# "know what you are doing" (tm-too)
+#
+
+
+############## translations
+
+#:Success:$2 on $3 -\> $4 $5
+#:Success(fr):$2 sur $3 -\> $4 $5
+
+#:Failed:Failed
+#:Failed(fr):Echec
+
+#:Busy:BUSY\!
+#:Busy(fr):OCCUPE\!
+
+#:Errs:Errors detected
+#:Errs(fr):Des erreurs ont été détectées
+
+#:Runfsck:You should run $3 $2 manually
+#:Runfsck(fr):Vous devriez exécuter $3 $2 à la main
+
+#:UnkFS:Unsupported FS on $2
+#:UnkFS(fr):Système de fichiers non supporté sur $2
+  
+#:TryingFS:Trying to mount filesystems...
+#:TryingFS(fr):Tentative de montage des systèmes de fichiers...
+
+#:TryingSwap:Trying to activate swap...
+#:TryingSwap(fr):Activation du swap...
+  
+#:NoRoot:Failed to find a Linux root
+#:NoRoot(fr):Racine du système Linux introuvable
+  
+#:MountedRoot:Root FS mounted to $2
+#:MountedRoot(fr):Racine montée en $2
+  
+#:MountedFS:$2 mounted to $3
+#:MountedFS(fr):$2 monté sur $3
+  
+#:NoRemount:Unable to mount $2 to $3
+#:NoRemount(fr):Impossible de monter $2 sur $3
+  
+#:NoUmount:Unable to umount $2
+#:NoUmount(fr):Impossible de démonter $2
+  
+#:ManyRoots:Sorry, $2 Linux root partitions found.
+#:ManyRoots(fr):Désolé, $2 racines Linux trouvées.
+
+#:DoChroot:[1m$2 $3 $4[m is now launched§
+#:DoChroot:Ctrl-D to return to SrCD system§
+#:DoChroot(fr):[1m$2 $3 $4[m va être exécuté§
+#:DoChroot(fr):Ctrl-D pour revenir au système de dépannage§
+
+#:NoChroot:Sorry, chroot didn't work, no valid shell found
+#:NoChroot(fr):Désolé, chroot n'a pu être lancé, pas de shell
+
+#:Unmounting:Trying to unmount filesystems...
+#:Unmounting(fr):Tentative de démontage des systèmes de fichiers...
+
+#:CannotUmt:Failed for $2 \(probably busy?\)
+#:CannotUmt(fr):Echec pour $2 \(probablement utilisé?\)
+
+#:FstabFound: fstab file found, use it [Y/n] ?
+#:FstabFound(fr): Fichier fstab détecté, l'utiliser [O/n] ?
+	
+#:Help:This program walks through your hard drives and tries to§
+#:Help:¤- check and mount all partitions it finds, or§
+#:Help:¤- activate the swap partitions.§
+#:Help:Only ext2/3, jfs, xfs, reiserfs and fat32 partitions are mounted.§
+#:Help:[1m-h[m, [1m--help[m§
+#:Help:¤¤¤¤Display this help and exit§
+#:Help:[1m-r[m, [1m--read-only[m§
+#:Help:¤¤¤¤All partitions are mounted read only and no filesystem check will§
+#:Help:¤¤¤¤be performed.§
+#:Help:[1m-w[m, [1m--read-write[m§
+#:Help:¤¤¤¤Try to mount all partitions read/write. Before mounting a partition§
+#:Help:¤¤¤¤read/write, a non-destructive filesystem check will be performed.§
+#:Help:¤¤¤¤If the check fails the partition is mounted read only.§
+#:Help:[1m-S[m, [1m--system[m§
+#:Help:¤¤¤¤Try to mount all Linux system partitions read/write,§
+#:Help:¤¤¤¤at their supposed real place. If successful, launches a [1mchroot[m§
+#:Help:¤¤¤¤shell into the target system. \(Ctrl-D to return\)§
+#:Help:\\[1m-u\\[m, \\[1m--umount\\[m§
+#:Help:¤¤¤¤Unmount non-busy partitions under $mnt, remove unused dirs§
+#:Help:[1m-s[m, [1m--swap[m§
+#:Help:¤¤¤¤Search for Linux swap partitions and try to activate them.§
+
+#:Help(fr):§
+#:Help(fr):Ce programme va parcourir les partitions de vos disques IDE et§
+#:Help(fr):SCSI et tenter§
+#:Help(fr):¤- de les monter \(ext2/3, jfs, xfs, reiserfs ou fat32\)§
+#:Help(fr):¤- ou de les activer \(swap\)§
+#:Help(fr):\\[1m-h\\[m, \\[1m--help\\[m§
+#:Help(fr):¤¤¤¤Affiche cette aide.§
+#:Help(fr):\\[1m-r\\[m, \\[1m--read-only\\[m§
+#:Help(fr):¤¤¤¤Les partitions sont montées en lecture seule, aucune§
+#:Help(fr):¤¤¤¤vérification.§
+#:Help(fr):\\[1m-w\\[m, \\[1m--read-write\\[m§
+#:Help(fr):¤¤¤¤Essaie de monter les partitions en lecture/écriture.§
+#:Help(fr):¤¤¤¤avant tout montage lecture/écriture, une vérification non§
+#:Help(fr):¤¤¤¤destructive \(fsck\) sera effectuée.§
+#:Help(fr):¤¤¤¤Si elle échoue, la partition sera montée en lecture seule.§
+#:Help(fr):\\[1m-S\\[m, \\[1m--system\\[m§
+#:Help(fr):¤¤¤¤Comme --read-write, mais tente de monter chaque partition§
+#:Help(fr):¤¤¤¤à sa place. En cas de réussite, exécute un shell [1mchroot[m§
+#:Help(fr):¤¤¤¤dans le système cible. \(Ctrl-D pour revenir\)§
+#:Help(fr):\\[1m-u\\[m, \\[1m--umount\\[m§
+#:Help(fr):¤¤¤¤Démonte les partitions montées sous $mnt§
+#:Help(fr):\\[1m-s\\[m, \\[1m--swap\\[m§
+#:Help(fr):¤¤¤¤Recherche les partitions de swap Linux et essaie de les§
+#:Help(fr):¤¤¤¤activer§
+
+
+
+############## simplified multi-lang sh utilities
+
+#:ERROR:FAILED
+#:ERROR(fr):ERREUR
+
+    resources=$0
+    [ -x $resources ] || resources=$(which $(basename $0))
+
+function _n() {
+  [ "$1" = "" ] && return
+  trsl=`grep -h "^#:$1($lang):" $resources`
+  if [ "$trsl" = "" ]; then
+    trsl=`grep -h "^#:$1:" $resources`
+  fi
+  if [ "$trsl" = "" ]; then
+    echo -n "### $*"
+  else
+    eval echo -ne `echo -e "$trsl" | cut -d: -f3-` | sed 's/§ /§/g' | tr '§¤' '\012 '
+  fi
+}
+function _() {
+ _n $*; echo
+}
+
+
+
+
+ COL60="\033[60G"
+  HIGH="\033[1m"
+   RED="\033[1;31m"
+ GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+  NORM="\033[0;39m"
+  CEOL="\033[K"
+
+pr_l()  {
+ echo -ne "\r"
+ flg="$1"; shift
+ [ $# -gt 0 ] && echo -ne "`_n $*`$CEOL"
+ echo -e "$COL60[$flg$NORM]"
+}
+ok()   {
+ pr_l "$GREEN  OK  "  $*
+}
+warn() {
+ pr_l "$YELLOW WARN " $*
+}
+err()  {
+ pr_l "$RED`_ ERROR`" $*
+}
+
+
+############## mount utilities
+
+mount=/bin/mount
+umount=/bin/umount
+mkdir=/bin/mkdir
+    
+# root mount point
+mnt=/mnt/linux
+$mkdir -p $mnt
+
+usage() {
+  echo "Usage: $(basename $0) -h|-r|-w|-S|-s|-u|--help|--read-only|--read-write|--system|--swap"
+}
+help() {
+  usage; _ Help
+}
+
+# 'syslookup mount_point' try to figure mounted partition type
+# should be tweaked for each unsupported system
+# /tmp detection is easily subject to fail
+syslookup() {
+  if   [ -x $1/bin/sh     -a\
+         -e $1/etc/passwd -a\
+         -e $1/usr        -a\
+         -e $1/var        -a\
+         -e $1/tmp ]; then           echo root
+         
+  # from old times, when /boot had to
+  #  be kept before cylinder 1024
+  elif [ -f $1/boot.b -o\
+         -d $1/grub ]; then          echo boot   
+         
+  elif [ -e $1/bin -a\
+         -e $1/lib -a\
+         -e $1/include ]; then       echo usr
+
+  elif [ -e $1/cache    -a\
+      \( -e $1/lib/dpkg -o\
+         -e $1/lib/rpm \) ]; then    echo var    # poor test
+         
+  elif [ -d $1/.X11-unix ]; then     echo tmp    # very poor test !!!
+  
+  elif [ "$(/usr/bin/find $1 -name .\*shrc 2>/dev/null)" != "" ]; then echo home
+  
+  fi
+}
+
+# 'trymount device directory' - creates the directory
+trymount() {
+  # umount it just in case
+  umount $1 2>/dev/null
+  umount $2 2>/dev/null
+  # try to create target dir
+  mkdir -p $2 2>/dev/null
+  mount $* &>/dev/tty12
+}
+
+# 'tryunmount' - umount everything in $mnt
+tryumount() {
+  _n Unmounting
+  olist=
+  while true; do
+    list=`cat /proc/mounts | cut -d" " -f2|grep $mnt/`
+    [ "$list" = "" -o "$list" = "$olist" ] && break
+    umount -f $list 2>/dev/null
+    olist="$list"
+  done
+  rmdir $mnt/* $mnt 2>/dev/null
+  [ "$list" = "" ] && ok && return 0
+  err
+  _ CannotUmt "$list"
+  return 1
+}
+
+postmount() {
+  MOUNTS="$MOUNTS $1:$2"
+}
+
+mountfs() {
+  echo -n "- $1..."
+  dvc=`basename $1`
+  umount $1 2>/dev/null
+  if [ "`cat /proc/mounts | grep \"^$1 \"`" != "" ]; then _n "Busy"; err; return 1; fi
+  LABEL=`e2label $1 2>/dev/null`
+  
+  if [ "$?" = 0 ]; then	                        # --- ext2/3
+    case "_$LABEL" in
+    _)   LABEL=/ext.$dvc;;
+    _/)  LABEL=/root.$dvc;;
+    _/*) LABEL=$LABEL.$dvc;;
+    *)   LABEL=/$LABEL.$dvc;;
+    esac
+    if trymount $1 $mnt$LABEL -n -t ext3 -o ro; then
+     umount $mnt$LABEL &>/dev/tty12
+     extfs=3
+     fsck=fsck.ext3
+    else
+     if trymount $1 $mnt$LABEL -n -t ext2 -o ro; then
+      umount $mnt$LABEL &>/dev/tty12
+      extfs=2
+      fsck=fsck.ext2
+     else
+      extfs=
+      fsck=fsck
+     fi
+    fi
+    FSCK=0
+    if [ "$MOUNT_OPTION" = "rw" ]; then
+      fsck="$fsck -nv"
+      echo -n "$fsck..."
+      $fsck $1 &>/dev/tty12
+      FSCK=$?
+    fi
+    if [ $FSCK -ne 0 -a $FSCK -ne 1 ]; then
+      warn Errs
+      _ Runfsck $1 fsck
+      MOUNT_OPTION=ro
+    fi
+    if trymount $1 $mnt$LABEL -n -t ext$extfs -o $MOUNT_OPTION; then
+      postmount $1 $mnt$LABEL
+      sys=`syslookup $mnt$LABEL`; [ "$sys" != "" ] && sys=",$sys"
+      ok Success Ext${extfs}FS $1 $mnt$LABEL "($MOUNT_OPTION$sys)"
+    else
+      err Failed
+    fi
+    return
+  fi
+
+  
+  # try ReiserFS
+  LABEL=/rfs.$dvc
+  if trymount $1 $mnt$LABEL -n -t reiserfs -o ro; then     # --- reiserfs
+    umount $mnt$LABEL &>/dev/tty12
+    FSCK=0
+    if [ "$MOUNT_OPTION" = "rw" ]; then
+      fsck=reiserfsck
+      echo -n "$fsck..."
+      echo Yes|$fsck $1 &>/dev/tty12
+      FSCK=$?
+    fi
+    if [ $FSCK -ne 0 ]; then
+      warn Errs
+      _ Runfsck $1 reiserfsck
+      MOUNT_OPTION=ro
+    fi
+    if trymount $1 $mnt$LABEL -t reiserfs -n -o $MOUNT_OPTION; then
+      postmount $1 $mnt$LABEL
+      sys=`syslookup $mnt$LABEL`; [ "$sys" != "" ] && sys=",$sys"
+      ok Success ReiserFS $1 $mnt$LABEL "($MOUNT_OPTION$sys)"
+    else
+      err
+    fi
+    return
+  fi
+
+  # try Jfs
+  LABEL=/jfs.$dvc
+  if trymount $1 $mnt$LABEL -n -t jfs -o ro; then     # --- jfs
+    umount $mnt$LABEL &>/dev/tty12
+    FSCK=0
+    if [ "$MOUNT_OPTION" = "rw" ]; then
+      fsck="fsck.jfs -nv"
+      echo -n "$fsck..."
+      $fsck $1 &>/dev/tty12
+      FSCK=$?
+    fi
+    if [ $FSCK -ne 0 ]; then
+      warn Errs
+      _ Runfsck $1 fsck.jfs
+      MOUNT_OPTION=ro
+    fi
+    if trymount $1 $mnt$LABEL -t jfs -n -o $MOUNT_OPTION; then
+      postmount $1 $mnt$LABEL
+      sys=`syslookup $mnt$LABEL`; [ "$sys" != "" ] && sys=",$sys"
+      ok Success JFS $1 $mnt$LABEL "($MOUNT_OPTION$sys)"
+    else
+      err
+    fi
+    return
+  fi
+
+  # try Xfs
+  LABEL=/xfs.$dvc
+  if trymount $1 $mnt$LABEL -n -t xfs -o ro; then     # --- xfs
+    umount $mnt$LABEL &>/dev/tty12
+    FSCK=0
+    if [ "$MOUNT_OPTION" = "rw" ]; then
+      fsck="fsck.xfs -nv"
+      echo -n "$fsck..."
+      $fsck $1 &>/dev/tty12
+      FSCK=$?
+    fi
+    if [ $FSCK -ne 0 ]; then
+      warn Errs
+      _ Runfsck $1 fsck.xfs
+      MOUNT_OPTION=ro
+    fi
+    if trymount $1 $mnt$LABEL -t xfs -n -o $MOUNT_OPTION; then
+      postmount $1 $mnt$LABEL
+      sys=`syslookup $mnt$LABEL`; [ "$sys" != "" ] && sys=",$sys"
+      ok Success XFS $1 $mnt$LABEL "($MOUNT_OPTION$sys)"
+    else
+      err
+    fi
+    return
+  fi
+
+  # try VFAT 
+  LABEL=/win.$dvc
+  if trymount $1 $mnt$LABEL -tvfat -n; then                 # --- vfat
+    ok Success Fat32 $1 $mnt$LABEL "($MOUNT_OPTION)"
+    return
+  fi
+
+  # try NTFS
+  LABEL=/ntfs.$dvc
+  if trymount $1 $mnt$LABEL -n -t ntfs -o ro; then     # --- xfs
+    umount $mnt$LABEL &>/dev/tty12
+    if [ "$MOUNT_OPTION" = "rw" ]; then
+      echo "ntfs partitions cannot (yet?) be checked..."
+    fi
+    if mount.captive-ntfs $1 $mnt$LABEL -n -o $MOUNT_OPTION; then
+      postmount $1 $mnt$LABEL
+      sys=`syslookup $mnt$LABEL`; [ "$sys" != "" ] && sys=",$sys"
+      ok Success NTFS $1 $mnt$LABEL "($MOUNT_OPTION$sys)"
+    else
+      err
+    fi
+    return
+  fi
+
+  # FS not yet supported
+  rm -rf $mnt${LABEL}
+  warn UnkFS $1
+}
+
+ch_root() {
+  for i in zsh bash ksh sh; do
+    if [ -f $1/bin/$i ]; then
+      echo
+      _ DoChroot SHELL=/bin/$i chroot $sysroot
+      SHELL=/bin/$i chroot $sysroot
+      return 0
+    fi
+  done
+  _ NoChroot
+  return 1
+}
+
+
+# CODE BEGINS HERE
+
+if [ $# -ne 1 ]; then
+  usage
+  exit 1
+fi
+
+MOUNT_OPTION=rw
+case "$1" in
+  -h|--help)       help; exit 0;;
+  -r|--read-only)  MOUNT_OPTION=ro;;
+  -s|--swap)       MOUNT_OPTION=swap;;
+  -w|--read-write) ;;
+  -S|--system)     BUILDSYS=y;;
+  -u|--umount)     tryumount; exit $?;;
+  *)               usage; exit 1;;
+esac
+ 
+
+# @TODO@ : software raid support - fstab method is OK if devices autodetected & /dev entries exist
+# @raid@ modprobe -k raid0 &>/dev/tty12
+# @raid@ modprobe -k raid1 &>/dev/tty12
+# @raid@ modprobe -k raid5 &>/dev/tty12
+
+sysroot=$mnt/sys
+umount $sysroot/* 2>/dev/null
+
+# Probe for and try to mount filesystems...
+if [ "$MOUNT_OPTION" = "swap" ]; then
+  _ TryingSwap
+else
+  _ TryingFS
+# @raid@  for t in `seq 0 31`; do
+# @raid@    [ -e /dev/md$t ] || continue
+# @raid@    dd if=/dev/md$t of=/tmp/rd count=1 bs=1 &>/dev/null
+# @raid@    [ -s /tmp/rd ] && mountfs /dev/md$t
+# @raid@    rm /tmp/rd &>/dev/null
+# @raid@  done
+fi
+
+for t in hd sd; do
+  for d in a b c d e f g h; do
+    # Check if the drive exists...
+    [ -e /dev/$t$d ] || continue
+    dd if=/dev/$t$d of=/dev/null bs=1 count=1 &>/dev/null || continue
+    for p in `fdisk -l /dev/$t$d 2>/dev/null|grep "^/dev"|awk '{print $1}'`; do
+      TYPE=`fdisk -l /dev/$t$d 2>/dev/null|grep "^$p"|tr -d \*|awk '{print $5}'`
+      # Don't even consider mounting a partial raid fs or an extended partition...
+      [ "$TYPE" = 5 -o "$TYPE" = fd ] && continue
+      if [ "$MOUNT_OPTION" = "swap" ]; then
+        if [ "$TYPE" = 82 ]; then
+          echo -n "- $p..."
+          swapon $p &>/dev/tty12 && ok || err
+        fi
+      else
+        if [ "$TYPE" != 82 ]; then
+          mountfs $p
+        fi
+      fi
+    done
+  done
+done
+
+# try to rebuild system if requested
+if [ "$BUILDSYS" = y ]; then
+  # first, look for a root sys
+  NUMROOTS=0
+  for mt in $MOUNTS; do
+    mntpt=`echo $mt | cut -d: -f2`
+    if [ "`syslookup $mntpt`" = root ]; then
+      SYS="$SYS $mt"
+      NUMROOTS=$(($NUMROOTS + 1))
+    fi
+  done
+
+  case $NUMROOTS in
+  # no root sys found  
+  0) err NoRoot;;
+    
+  # one root sys found, try to continue
+  1) echo
+     mntpt=`echo $SYS | cut -d: -f2`
+     mntdv=`echo $SYS | cut -d: -f1`
+     umount $mntpt
+     if [ $? -eq 0 ]; then
+       if trymount $mntdv $sysroot; then
+	 ok MountedRoot $sysroot
+	 # look for etc/fstab, ask to use it if present
+         fstab=$sysroot/etc/fstab
+         a=n
+	 if [ -f $fstab ]; then
+           _n FstabFound
+	   read a; case "$a" in n*|N*) a=n;; *) a=y;; esac
+           if [ $a = y ]; then
+	     mv /etc/fstab /etc/fstab.tmp
+             awk '{ if (($3 == "ext2") || ($3 == "ext3") || ($3 == "reiserfs") || ($3 == "xfs") || ($3 == "jfs")) printf("%s '$sysroot'%s %s %s %s %s\n",$1,$2,$3,$4,$5,$6); }' <$fstab >/etc/fstab
+	     mount -a
+	     mv /etc/fstab.tmp /etc/fstab
+	     echo
+	     mount | grep $sysroot
+	     (cd $sysroot; umount $mnt/* 2>/dev/null; rmdir $mnt/* 2>/dev/null)
+	     ch_root $sysroot
+           fi
+         fi
+
+	 # no fstab or asked not to use it
+	 if [ $a = n ]; then
+	   echo
+	   for dir in boot usr var tmp home; do
+	     if [ -d $sysroot/$dir ]; then
+	       for mnt in $MOUNTS; do
+	         mntpt=`echo $mnt | cut -d: -f2`
+	         mntdv=`echo $mnt | cut -d: -f1`
+	         if [ "`syslookup $mntpt`" = $dir ]; then
+	           if umount $mntpt; then
+		     if trymount $mntdv $sysroot/$dir; then
+		       ok MountedFS $mntdv $sysroot/$dir
+  		     else
+		       warn NoRemount $mntdv $sysroot/$dir
+		       mount $mntdv $mntpt
+		     fi
+		   else
+		     warn NoUmount $mntpt
+		   fi
+		   break
+	         fi
+	       done
+	     fi
+	   done
+	   ch_root $sysroot
+         fi
+	 
+       else
+	 warn NoRemount $mntdv $sysroot
+	 mount $mntdv $mntpt
+       fi
+     else
+       warn NoUmount $mntpt
+     fi
+     ;;
+       
+    # many Linux system, bad luck - find your children manually
+    *) err ManyRoots $NUMROOTS;;
+esac
+fi
+
+# unload unneeded modules
+# rmmod -a
+echo
+
+exit 0

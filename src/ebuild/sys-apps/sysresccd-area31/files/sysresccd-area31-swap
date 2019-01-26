@@ -1,0 +1,133 @@
+#!/bin/bash
+
+DIR_MNT="/mnt/custom"
+TMP="/tmp/sysresccd-area31"
+
+if [ ! -d ${TMP} ]; then
+	mkdir -p ${TMP}
+fi
+
+REDIR=/dev/tty4
+NDIR=/dev/null
+
+crunch() {
+read STRING;
+echo $STRING;
+}
+
+# get_part_size( dev ) - Return the size in KB of the named partition.
+get_part_size() {
+	Size=$(fdisk -l $1|cut -d: -f2|egrep -i 'GiB|bytes|setores|sectors'|head -1|awk '{print $1, $2}'|cut -d',' -f1)
+   echo $Size
+}
+
+rm -f $TMP/SeTswap $TMP/SeTswapskip $TMP/SeTuseswap $TMP/tmpscript
+
+# unlounting everything mounted on swap
+swapoff -a
+
+SWAPLIST="`fdisk -l 2> /dev/null | egrep -i "Linux swap" | cut -f 1 -d ' ' | sort 2> $NDIR`" 
+
+if [ "$SWAPLIST" = "" ]; then
+ dialog --title " NO SWAP PARTITION DETECTED " --yesno "\n \
+ You didn't created any SWAP partition using\n
+ 'cfdisk' or 'fdisk'.\n\n\
+ Do you wish to continue even without SWAP? " 10 56
+ if [ "$?" = "1" ]; then
+  dialog --title " ABORTING SWAP " --msgbox "\n Create a SWAP partition using 'cfdisk' or 'fdisk' and try again. ;)" \
+8 55
+ else
+  touch $TMP/SeTswapskip
+ fi
+ exit
+else # there is at least one swap partition:
+ # Build the swap partition selection menu:
+ cat << EOF > $TMP/tmpscript
+dialog --backtitle "RescueCD Area31 Partition Tools" \\
+--title " SWAP PARTITION DETECTED " --checklist \\
+"One or more SWAP partitions were detected on your system.\n\n \\
+These partitions were pre selected \\
+to be used as swap space. \\
+Case there is any SWAP partition that you \\
+doesn't want to use please unselect \\
+with keys [UP]/[DOWN] and press [SPACE].\n\nIf you wish \\
+to utilize alljust press [ENTER].\n" \\
+18 70 18 \\
+EOF
+ for swappartition in $SWAPLIST ; do
+  PARTSIZE=$(get_part_size $swappartition)
+  cat << EOF >> $TMP/tmpscript
+"$swappartition" "Linux swap partition [${PARTSIZE}]" on \\
+EOF
+ done
+ cat << EOF >> $TMP/tmpscript
+ 2> $TMP/SeTuseswap
+EOF
+ . $TMP/tmpscript
+ if [ ! $? = 0 ]; then
+  rm -f $TMP/tmpscript $TMP/SeTswap $TMP/SeTuseswap
+  touch $TMP/SeTswapskip
+ fi
+
+ if [ -r $TMP/SeTuseswap ]; then
+  # Remove extra quotes from SeTuseswap, if any:
+  cat $TMP/SeTuseswap | tr -d \" > $TMP/SeTfoo
+  mv $TMP/SeTfoo $TMP/SeTuseswap
+
+  # Were any swap partitions asked for?
+  if [ "$(cat $TMP/SeTuseswap)" = "" -a ! -r $TMP/SeTswapskip ]; then
+   rm -f $TMP/tmpscript $TMP/SeTswap $TMP/SeTuseswap
+   touch $TMP/SeTswapskip
+  fi
+ fi
+
+ if [ ! -r $TMP/SeTswapskip ]; then
+  dialog --backtitle "RescueCD Area31 Partition Tools" \
+ --title " CHECK BAD BLOCKS IN SWAP PARTITION? " --defaultno --yesno \
+"RescueCD Area31 Setup will prepare your SWAP system. \
+Upon formatting SWAP partitions using 'mkswap' it is possible to verify \
+BAD BLOCKs. This isn't default on RescueCD since several modern HDs \
+check it all time. \
+\n\nWish to verify bad blocks during SWAP partition formatting?" \
+14 60
+  if [ $? = 0 ]; then
+   CHECKBAD=yes
+  else
+   CHECKBAD=no
+  fi
+
+  # Run mkswap on swap partitions, unless they are already in use:
+  for swappartition in $(cat $TMP/SeTuseswap) ; do
+   if ! egrep -i -w $swappartition /proc/swaps 1> $REDIR 2> $REDIR ; then
+    if [ "$CHECKBAD" = "no" ]; then
+     dialog --title " FORMATTING SWAP " --backtitle "Formatting SWAP partition." --infobox "\nFormatting ${swappartition} SWAP partition..." 5 50
+     mkswap -v1 $swappartition 1> $REDIR 2> $REDIR
+    else
+ dialog --title " FORMATTING SWAP " --backtitle "Formatting SWAP partition." --infobox "\nFormatting ${swappartition} SWAP partition..." 5 50
+
+     mkswap -c -v1 $swappartition 1> $REDIR 2> $REDIR
+    fi
+       dialog --title " ACTIVATING SWAP " --backtitle "RescueCD Area31 Partition Tools" --infobox "\nActivating ${swappartition} SWAP partition...\n " 5 50
+    swapon $swappartition 1> $REDIR 2> $REDIR
+   fi
+  done
+
+  # This is so people don't ask what that output was that flashed
+  # by on the screen.  ;-)
+  sleep 2
+
+  # Add the swap partitions to the file that will go into /etc/fstab:
+  for swappartition in $(cat $TMP/SeTuseswap) ; do
+   printf "%-16s %-16s %-11s %-16s %-3s %s\n" "$swappartition" "swap" "swap" "sw" "0" "0" >> $TMP/SeTswap
+  done
+
+  echo "Your SWAP partition were activated successfully. It's mounting point might" > $TMP/swapmsg
+  echo "be added to /etc/fstab case desired:" >> $TMP/swapmsg
+  echo >> $TMP/swapmsg
+  cat $TMP/SeTswap >> $TMP/swapmsg
+  dialog --title " CONFIGURED SWAP " --exit-label OK --textbox $TMP/swapmsg 10 72
+  rm $TMP/swapmsg
+ fi  
+fi
+
+sh /usr/share/sysresccd-area31/sysresccd-area31-showmount

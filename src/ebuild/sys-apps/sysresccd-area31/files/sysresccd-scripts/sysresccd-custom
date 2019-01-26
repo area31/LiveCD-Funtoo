@@ -1,0 +1,286 @@
+#!/bin/bash
+# Project page: http://www.system-rescue-cd.org/
+# (C) 2003-2008 Francois Dupoux
+# This scipt is available under the GPL-2 license
+
+## HELP AND BASIC ARGUMENT PROCESSING
+#####################################
+
+usage()
+{
+	cat <<EOF
+sysresccd-custom: SystemRescueCd customization script for x86
+Syntax:           sysresccd-custom <command> ...
+
+Please, read the manual for help about how to use this script.
+http://www.system-rescue-cd.org/Sysresccd-manual-en_How_to_personalize_SystemRescueCd
+This script must be executed outside of the chroot environment.
+
+Commands (execute in that order):
+ 1) extract                    Extract files from the squashfs into your disk
+ 2) squashfs                   Recreate the compressed loopback squashfs image
+ 3) setkmap <keymap-code>      Force a keymap to be loaded without prompt
+ 4) isogen <cd_volume_name>    Generate the final bootable ISO image
+
+ -h|--help	               Display this screen
+
+Distributed under the GNU Public License version 2 - http://www.system-rescue-cd.org
+EOF
+}
+
+## MISC FUNCTIONS: Many utilities functions
+###########################################
+
+# show the error message ($1 = first line of the message)
+help_readman()
+{
+	echo "$1"
+	echo "Please, read the manual for more help about this script"
+	echo "Web: http://www.system-rescue-cd.org"
+	exit 1
+}
+
+## Main
+###########################################
+
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]
+then
+	usage
+	exit 1
+fi
+
+if [ "$(whoami)" != "root" ]
+then
+	help_readman "$0: This script requires root privileges to operate."
+fi
+
+if [ ! -d "/mnt/custom" ]
+then
+	help_readman "$0: You need to mount a partition with free space on /mnt/custom"
+	exit 1
+fi
+
+if grep -q " /mnt/custom " /proc/mounts
+then
+	echo "/mnt/custom is mounted -> ok"
+else
+	help_readman "$0: /mnt/custom is not mounted. Cannot continue."
+	exit 1
+fi
+
+PROG=${0}
+
+## ERROR HANDLING
+#####################################
+
+die()
+{
+	if [ -n "$1" ]
+	then
+		echo "${PROG}: error: $1"
+	else
+		echo "${PROG}: aborting."
+	fi
+	exit 1
+}
+
+## MISC FUNCTIONS: Many utilities functions
+###########################################
+
+# $1 == MB required by the function
+check_freespace()
+{
+	SIZE=`(\df -m -P /mnt/custom) | grep " /mnt/custom$" | tail -n 1 | awk '{print $4}'`
+
+	if [ $SIZE -gt $1 ]
+	then
+		echo "there is enough estimated free space here ($SIZE MB) -> ok"
+	else
+		echo "$PROG: not enough room in /mnt/custom"
+		help_readman "You only have $SIZE MB free, and the script needs at least $1 MB free"
+		exit 1
+	fi
+}
+
+## MAIN FUNCTIONS: Extracting the squashfs to the hard disk
+########################################################
+do_extract_check()
+{
+	# check for free space
+	check_freespace 1500
+}
+
+do_extract()
+{
+	# ---- check the original contents
+	for curfile in /livemnt/boot/sysrcd.dat /livemnt/boot/sysrcd.md5 /livemnt/boot/isolinux/rescue64
+	do
+		if [ ! -f "${curfile}" ]
+		then
+			die "File ${curfile} was not found. All the original sysresccd files must be available in /livemnt/boot"
+		fi
+	done
+	
+	# ---- copy the original contents
+	mkdir -p /mnt/custom/customcd/isoroot/
+	rm -rf /mnt/custom/customcd/isoroot/*
+	
+	# ---- copy critical files and directories
+	for curfile in version isolinux
+	do
+		cp -a /livemnt/boot/${curfile} /mnt/custom/customcd/isoroot/ || die "copy: cannot copy ${curfile} to /mnt/custom/customcd/isoroot/"
+	done
+	
+	# ---- copy optionnal files and directories
+	for curfile in boot bootprog bootdisk efi ntpasswd usb_inst usb_inst.sh usbstick.htm
+	do
+		if ! cp -a /livemnt/boot/${curfile} /mnt/custom/customcd/isoroot/ 2>/dev/null
+		then
+			echo "cannot copy ${curfile} to /mnt/custom/customcd/isoroot/ (non critical error, maybe be caused by \"docache\")"
+			rm -rf /mnt/custom/customcd/isoroot/${curfile}
+		fi
+	done
+	
+	# ---- extract files (/livemnt/squashfs is the mount point of sysrcd.dat)
+	mkdir -p /mnt/custom/customcd/files/
+	rm -rf /mnt/custom/customcd/files/*
+	cp -a /livemnt/squashfs/* /mnt/custom/customcd/files/ || die "cannot copy the files from the squashfs filesystem."
+}
+
+do_squashfs()
+{
+	# check for free space
+	check_freespace 400
+
+	# prepare the directories
+	mkdir -p /mnt/custom/customcd/
+	mkdir -p /mnt/custom/customcd/files/
+	mkdir -p /mnt/custom/customcd/isoroot/
+	touch "/mnt/custom/customcd/files/customized"
+	
+	# check that the files have been extracted
+	if [ "$(ls -A /mnt/custom/customcd/files/ 2>/dev/null | wc -l)" -eq 0 ]
+	then
+		die "squashfs: /mnt/custom/customcd/files/ is empty, your must extract the files first."
+	fi
+
+	# check that there are no remaining filesystems mounted
+	for curfs in proc
+	do
+		curpath="/mnt/custom/customcd/files/${curfs}"
+		dircnt="$(ls -A ${curpath} 2>/dev/null | wc -l)"
+		if [ "${dircnt}" -gt 0 ]
+		then
+			die "squashfs: the directory ${curpath} must be empty"
+		fi
+	done
+
+	rm -f /mnt/custom/customcd/isoroot/sysrcd.dat
+	cmd="mksquashfs /mnt/custom/customcd/files/ /mnt/custom/customcd/isoroot/sysrcd.dat"
+	echo "${cmd}"
+	${cmd} || die
+	(cd /mnt/custom/customcd/isoroot/ ; md5sum sysrcd.dat > sysrcd.md5)
+
+	# Change permissions to allow the file to be sent by thttpd for PXE-boot
+	chmod 666 /mnt/custom/customcd/isoroot/sysrcd.{dat,md5}
+}
+
+## MAIN FUNCTIONS: Force a keymap to be loaded without prompt
+########################################################
+do_setkmap()
+{
+	KEYMAP="${1}"
+
+	if [ -z "${KEYMAP}" ]
+	then
+		die "do_setkmap: you must specify the keymap you want to use (eg: \"$0 setkmap uk\")"
+	fi
+
+	if [ ! -d "/mnt/custom/customcd/isoroot/isolinux" ]
+	then
+	        die "do_setkmap: you have to run command copy before setkmap"
+	fi
+
+	echo "Keymap to be loaded: ${KEYMAP}"
+
+	# Set keymap in isolinux.cfg
+	cp /mnt/custom/customcd/isoroot/isolinux/isolinux.cfg /mnt/custom/customcd/isoroot/isolinux/isolinux.bak
+	sed -i -r -e "s: setkmap=[a-z0-9]+::g ; s:APPEND:APPEND setkmap=${KEYMAP}:gi" /mnt/custom/customcd/isoroot/isolinux/isolinux.cfg
+} 
+
+## MAIN FUNCTIONS: Create the new ISO image
+########################################################
+do_isogen()
+{
+	ISO_VOLUME="${1}"
+	curtime="$(date +%Y%m%d-%H%M)"
+
+	# check for free space
+	check_freespace 1700
+
+	if [ -z "${ISO_VOLUME}" ]
+	then
+		die "do_isogen: you must specify the name of the volume you want to use for the iso image."
+	fi
+
+	mkdir -p /mnt/custom/customcd/isofile/
+	rm -rf /mnt/custom/customcd/isofile/*
+
+	if [ ! -d "/mnt/custom/customcd/isoroot/isolinux" ]
+	then
+	        die "do_isogen: you must create a squashfs filesystem before you run isogen"
+	fi
+
+	touch "/mnt/custom/customcd/isoroot/customized"
+
+	echo "Volume name of the CDRom: ${ISO_VOLUME}"
+
+        cmd="xorriso -as mkisofs -joliet -rock \
+		-omit-version-number -disable-deep-relocation \
+		-b isolinux/isolinux.bin -c isolinux/boot.cat \
+		-no-emul-boot -boot-load-size 4 -boot-info-table \
+		-eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot \
+		-o /mnt/custom/customcd/isofile/funtoo-livecd-area31-${curtime}.iso \
+		-volid ${ISO_VOLUME} /mnt/custom/customcd/isoroot"
+
+	${cmd}
+	res="$?"
+	echo "${cmd} --> $res"
+	if [ "${res}" != '0' ]
+	then
+		die "mkisofs failed"
+	fi
+
+	md5sum /mnt/custom/customcd/isofile/funtoo-livecd-area31-${curtime}.iso > /mnt/custom/customcd/isofile/funtoo-livecd-area31-${curtime}.md5
+
+	echo "Final ISO image: /mnt/custom/customcd/isofile/funtoo-livecd-area31-${curtime}.iso"
+}
+
+## MAIN SHELL FUNCTION
+########################################################
+
+COMMAND="${1}"
+shift
+case "${COMMAND}" in
+	extract)
+		do_extract_check "$@"
+		do_extract
+		;;
+	extract-nosizecheck)
+		do_extract "$@"
+		;;
+	squashfs)
+		do_squashfs "$@"
+		;;
+	setkmap)
+		do_setkmap "$@"
+		;;
+	isogen)
+		do_isogen "$@"
+		;;
+	*)
+		usage 
+		exit 1
+		;;
+esac
+exit 0

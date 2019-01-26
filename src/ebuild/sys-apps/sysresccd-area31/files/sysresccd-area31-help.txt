@@ -1,0 +1,175 @@
+RescueCD Area31 Tools Help
+____________________
+
+First, a little help. Everytime you find a text like this 
+while navigating you can move with below commands:
+
+PgDn/SPACE	- Move one page below
+PgUg/'b'	- Move one page above
+ENTER/DOWN/'j'	- Move one line below
+UP/'k'		- Move one line above
+LEFT/'h'	- Move left (scroll)
+RIGHT/'l'	- Move roght (Scroll)
+HOME/'g'	- Move to the beginning of file
+END/'G'	- Move to the end of file
+'/'		- Search forward (below)
+'?'		- Search below (above)
+'N'		- Repeat last search (below)
+'n'		- Repeat last search (above)
+
+
+Beyond that, you must know that you are executing a real multitasking
+operating system so you are not confined into current program. You can
+access other consoles and take a look anytime without disturbing chroot
+process. To do it you will need to learn the commands that control Linux
+console. You will use those commands all the time while logged into 
+RescueCD Area31 console.
+
+
+
+
+
+# "Virtual" consoles and scrollback
+
+Now, the screen you're looking into is probably VIRTUAL CONSOLE
+NUMBER ONE, (or '/dev/tty1' on Linux-speech, so to speak). Normally there are
+a number of available virtual consoles. When you enter the system,
+there will be six consoles. To alternate between them use Alt-F1, Alt-F2, Alt-F3
+for autologin use Alt-F4, Alt-F5 and Alt-F6 to login with a specific user.
+While using one console your temrinal will scroll a small amount of lines. To
+scrollback the console hold Right-Shift key while pressing PageUp. To scroll
+the console forward press PageDown while holding Right-Shift. This can be specially
+usefull to read initialize messages that can pass to fast on the screen, helping reading
+in another way.
+
+
+The first three consoles are auto-login shells.
+Use from the fourfth console on to login with a specific user case you wish
+to create them.
+
+
+
+
+
+# KEYMAP - Altering keyboard map:
+
+KEYMAP: This option allows you to remap your keyboard to one of the many international maps
+bundled with Linux. If you are using a br-abnt2 keyboard you can skip this option.
+
+
+
+
+# Partitioning your disk
+
+To customize your RescueCD it will be needed to separate a Linux partition
+to be mounted at '/mnt/custom' for the scripts copy all files needed for a perfect
+customization. A chroot environment will be available as also for hot changes to
+be done like compiling or removing softwares utilizing Portage or any other way desired.
+
+You will need at least one type of Linux partition and optionally a swap partition.
+In my opinion, (if you have a reasonable amount disk space create a partition
+with at least 50 GB for kernel recompilations be executed without problems.
+As an example of the minimum required:
+
+    [ 30 GB or more for /mnt/custom partition ]
+    [ 2 GB or more for swap partition type ]
+
+
+Some people like a separate partition to store generated ISO files but I think that's
+bullshit, all you need is to maintain a Linux partition with good amount of disk space
+and a good filesystem like EXT4 or reiserfs.
+
+
+The amount of hard disk space you will need to dedicate to Linux depends on which
+type of software you pretend to compile and how much space you have available.
+My Linux partition in '/mnt/custom' has something like 90 GB. If you have spare disk space
+it will be easier to compile and test eventual bugs noting that logs consume a large
+amount of disk space. Big software projects also require a large amount of disk
+space to compile like libreOffice demands 8 GB or firefox that require 6 GB of cache.
+It's also useful to have a partition with a large amount of disk space to work with
+big files like the ones used in eletronic editting or diverse graphical applications
+such as audio and video.
+
+Area31 RescueCD system has builtin vim editor, diverse network tools like nmap,
+tcpdump, iptraf, etc, and will consume ~20 MB RAM in console and ~90 MB RAM in
+graphical interface.
+
+Partitioning is made with partitioning tools like fdisk. There are two Linux fdisk
+version in text mode. 'fdisk' is default and there is 'cfdisk' that is a friendly
+version in command line. Most people probably will say 'cfdisk' or 'gparted' unless
+he's a dinossaur like me preferring good old 'fdisk'. Anyway, anyone will do the work.
+
+Certify yourself to use partition type "83 (Linux)" or type "82 (Linux swap)" so that
+RescueCD Area31 Tools can recognize and mount them in '/mnt/custom' and swap. In 'fdisk'
+type 't' for it and 'w' to write changes.
+
+If you prefer an easy to use graphical partitiong tool, you can use 'gparted' creating all
+your partitions using graphical interface (startx).
+
+
+
+
+# SWAP
+
+If your machine doesn't have a lot of RAM available you should know how to activate
+a swap partition to extend it even if your system doesn't work in an optimal speed.
+
+Normally you won't need to format a partition or activate swap to utilize RescueCD Area31
+Tools via liveCD to do trivial work or data recovery but if you want to compile softwares or
+customize the image, having an active swap is an interesting idea primarly on virtualized
+environments.
+
+After creating a swap partition using a partitioning tool, you'll need to use 'mkswap'
+to format it then activate it with 'swapon'.
+Verifying the partition table using 'fdisk -l' we can see these lines:
+
+   Device Boot	Start	End	Blocks	Size	Id	Type
+   /dev/sda2		2048	8388607	8386560	4G	82	Linux swap / Solaris
+
+
+Then the format command would be:
+
+  # mkswap /dev/sda2
+  # sync
+
+And to activate it:
+
+  # swapon /dev/sda2
+
+
+If you wish, use ADDSWAP option in the main menu to format and mount in a pratical way.
+
+
+
+# RescueCD Customization
+
+If you wish to customize the RescueCD you need to access the main menu
+and format a Linux partition following previous hints. I tend to follow
+the following order to customize the RescueCD:
+
+ADD-SWAP (to configure my swap partition)
+ADD-TARGET (to configure my Linux partitions)
+CHROOT (to configure or mount chroot environment)
+GEN-ISO (to generate a custom ISO image)
+
+I hope that those options would be used in an intuitive manner. Just by reading
+carefully the options presented on the screen and remembering that both use and
+customization require advanced knowledge of Linux systems structure. If you doesn't
+know what a filesystem is or how does a kernel works or how does a liveCD environment
+works, run to the hills.
+
+
+
+FINALIZE: This ends RescueCD Area31 Tools.
+
+Have fun using or customizing RescueCD Area31!
+
+
+
+
+
+---
+Raphael Bastos - mailto: raphaelbastos@hackstore.com.br
+
+https://www.area31.net.br/wiki/RescueCD_oficial
+https://www.funtoo.org/Make_your_own_RescueCD_based_on_Funtoo_Linux

@@ -1,0 +1,633 @@
+#!/bin/bash
+# Project page: http://www.system-rescue-cd.org/
+# (C) 2010 Francois Dupoux
+# This scipt is available under the GPL-2 license
+
+###############################################################################
+
+logfile="/var/tmp/usb_inst.log"
+TMPDIR="/var/tmp/usb_inst.tmp"
+MINSIZEMB=512
+PROGIMG="${0}"
+PROGLOC="$(dirname ${0})"
+CDFILES=('sysrcd.dat' 'sysrcd.md5' 'version' '???linux/initram.igz' 
+	'???linux/rescue32' '???linux/rescue64' '???linux/f1boot.msg'
+	'???linux/???linux.bin' '???linux/???linux.cfg')
+
+###############################################################################
+
+usage()
+{
+	cat <<EOF
+${PROGIMG}: SystemRescueCd installation script for USB-sticks
+Syntax: ${PROGIMG} <command> ...
+
+Please, read the manual for help about how to use this script.
+http://www.system-rescue-cd.org/Online-Manual-EN
+
+You can either run all sub-commands in the appropriate order, or you
+can just use the semi-graphical menu which requires less effort:
+
+A) Semi-graphical installation (easy to use):
+   Just run "${PROGIMG} dialog" and select the USB device
+
+B) Sub-commands for manual installation (execute in that order):
+   1) listdev               Show the list of removable media
+   2) writembr <devname>    Recreate the MBR + partition table on the stick
+   3) format <partname>     Format the USB-stick device (overwrites its data)
+   4) copyfiles <partname>  Copy all the files from the cdrom to the USB-stick
+   5) syslinux <partname>   Make the device bootable
+
+C) Extra sub-commands:
+   -h|--help	            Display these instructions
+
+Distributed under the GNU Public License version 2 - http://www.system-rescue-cd.org
+EOF
+}
+
+###############################################################################
+
+help_readman()
+{
+	echo "$1"
+	echo "Please, read the manual for more help about this script"
+	echo "Web: http://www.system-rescue-cd.org"
+	exit 1
+}
+
+cleanup_tmpdir()
+{
+	if [ -d "${TMPDIR}" ]
+	then
+		rm -rf ${TMPDIR}/{parted,install-mbr,mkfs.vfat,syslinux,syslinux.exe,dialog,mtools,mcopy,mattrib,mmove,xorriso}
+		rmdir ${TMPDIR}
+	fi
+}
+
+die()
+{
+	if [ -n "$1" ]
+	then
+		echo "$(basename ${PROGIMG}): error: $1"
+	else
+		echo "$(basename ${PROGIMG}): aborting."
+	fi
+	cleanup_tmpdir
+	exit 1
+}
+
+###############################################################################
+
+# check that there is one partition and one only on block-device $1
+find_first_partition()
+{
+	devname="$1"
+	if [ -z "${devname}" ] || [ ! -d "/sys/block/$(basename ${devname})" ]
+	then
+		die "${devname} is not a valid device name (1)"
+	fi
+	
+	partcnt=0
+	firstpart=0
+	for i in $(seq 1 4)
+	do
+		partname="${devname}${i}"
+		if [ -b "${partname}" ]
+		then
+			[ "${firstpart}" = '0' ] && firstpart="$i"
+			partcnt=$((partcnt+1))
+		fi
+	done
+	
+	if [ "${partcnt}" = '1' ]
+	then
+		return ${partcnt}
+	else
+		return 0
+	fi
+}
+
+# check $1 is a valid partition name
+check_valid_partname()
+{
+	if [ -z "${partname}" ]
+	then
+		die "you have to provide a valid partition device-name as argument of this command"
+	fi
+
+	if [ -z "${partname}" ] || [ ! -b "${partname}" ]
+	then
+		die "${partname} is not a valid partition name"
+	fi
+	
+	if ! echo "${partname}" | grep -qE '^/dev/[a-z]*[1-4]+$'
+	then
+		die "device [${partname}] is not a valid partition. Expect something like [/dev/sdf1]"
+	fi
+
+	if is_dev_mounted "${partname}"
+	then
+		die "${partname} is already mounted, cannot continue"
+	fi
+	
+	return 0
+}
+
+# check $1 is a valid block device name
+check_valid_blkdevname()
+{
+	if [ -z "${devname}" ]
+	then
+		die "you have to provide a valid device name as argument of this command"
+	fi
+	
+	if [ ! -b "${devname}" ] || [ ! -d "/sys/block/$(basename ${devname})" ]
+	then
+		die "${devname} is not a valid device name (2)"
+	fi
+	
+	if is_dev_mounted "${devname}"
+	then
+		die "${devname} is already mounted, cannot continue"
+	fi
+	
+	return 0
+}
+
+check_sysresccd_files()
+{
+    rootdir="$1"
+    [ -z "${rootdir}" ] && die "invalid rootdir"
+	for curfile in ${CDFILES[*]}
+	do
+		curcheck="${rootdir}/${curfile}"
+		if ! ls ${curcheck} >/dev/null 2>&1
+		then
+			die "Cannot find ${curcheck}, cannot continue"
+		fi
+	done
+	return 0
+}
+
+# returns 0 if the device is big enough
+check_sizeof_dev()
+{
+	devname="$1"
+
+	if [ -z "${devname}" ]
+	then
+		die "check_sizeof_dev(): devname is empty"
+	fi
+
+	if [ -z "$(which blockdev)" ]
+	then
+		echo "blockdev not found, assuming the size is ok"
+		return 0
+	fi
+	
+	secsizeofdev="$(blockdev --getsz ${devname})"
+	mbsizeofdev="$((secsizeofdev/2048))"
+	if [ "${mbsizeofdev}" -lt "${MINSIZEMB}" ]
+	then
+		die "The device [${devname}] is only ${mbsizeofdev} MB. It is too small to copy all the files, an USB-stick of at least ${MINSIZEMB}MB is recommended"
+	else
+		echo "The device [${devname}] seems to be big enough: ${mbsizeofdev} MB."
+		return 0
+	fi
+}
+
+# say how much freespace there is on a mounted device
+check_disk_freespace()
+{
+	freespace=$(\df -m -P ${1} | grep " ${1}$" | tail -n 1 | awk '{print $4}')
+	sysrcdspc=$(\du -csm ${1}/{sysrcd.dat,bootdisk,bootprog,isolinux,ntpasswd,usb_inst} 2>/dev/null | grep total$ | awk '{print $1}')
+	realfreespace=$((freespace+sysrcdspc))
+	echo "DEBUG: diskspace($1): freespace=${freespace}, sysrcdspc=${sysrcdspc}, realfreespace=${realfreespace}"
+	echo "Free space on ${1} is ${realfreespace}MB"
+	if [ "${realfreespace}" -lt "${MINSIZEMB}" ]
+	then
+		die "There is not enough free space on the USB-stick to copy the SystemRescuecd files."
+	fi
+	return 0
+}
+
+# check that device $1 is an USB-stick
+is_dev_usb_stick()
+{
+	curdev="$1"
+	
+	remfile="/sys/block/${curdev}/removable"
+	vendor="$(cat /sys/block/${curdev}/device/vendor 2>/dev/null)"
+	model="$(cat /sys/block/${curdev}/device/model 2>/dev/null)"
+	if [ -f "${remfile}" ] && cat ${remfile} 2>/dev/null | grep -qF '1' \
+		&& cat /sys/block/${curdev}/device/uevent 2>/dev/null | grep -qF 'DRIVER=sd'
+	then
+		return 0
+	else
+		return 1
+	fi
+}
+
+do_writembr()
+{
+	devname="$1"
+	shortname="$(echo ${devname} | sed -e 's!/dev/!!g')"
+	
+	check_valid_blkdevname "${devname}"
+	if ! is_dev_usb_stick "${shortname}"
+	then
+		die "Device [${devname}] does not seem to be an usb-stick. Cannot continue."
+	fi
+	
+	check_sizeof_dev "${devname}"
+	
+	if [ ! -x "${PROG_INSTMBR}" ] || [ ! -x "${PROG_PARTED}" ]
+	then
+		die "install-mbr and parted must be installed, check these programs first."
+	fi
+	
+	cmd="${PROG_INSTMBR} ${devname} --force"
+	echo "--> ${cmd}"
+	if ! ${cmd}
+	then
+		die "${cmd} --> failed"
+	fi
+	
+	cmd="${PROG_PARTED} -s ${devname} mklabel msdos"
+	echo "--> ${cmd}"
+	if ! ${cmd} 2>/dev/null
+	then
+		die "${cmd} --> failed"
+	fi
+	
+	cmd="${PROG_PARTED} -s ${devname} mkpart primary fat32 0 100%"
+	echo "--> ${cmd}"
+	if ! ${cmd} 2>/dev/null
+	then
+		die "${cmd} --> failed"
+	fi
+	
+	cmd="${PROG_PARTED} -s ${devname} set 1 boot on"
+	echo "--> ${cmd}"
+	if ! ${cmd} 2>/dev/null
+	then
+		die "${cmd} --> failed"
+	fi
+}
+
+do_format()
+{
+	partname="$1"
+	check_valid_partname "${partname}"
+
+	check_sizeof_dev "${partname}"
+
+	if [ ! -x "${PROG_MKVFATFS}" ]
+	then
+		die "mkfs.vfat not found on your system, please install dosfstools first."
+	fi
+	
+	if ${PROG_MKVFATFS} -F 32 -n SYSRESC ${partname}
+	then
+		echo "Partition ${partname} has been successfully formatted"
+		return 0
+	else
+		echo "Partition ${partname} cannot be formatted"
+		return 1
+	fi
+}
+
+do_copyfiles()
+{
+	partname="$1"
+	check_valid_partname "${partname}"
+	
+	# check the important files are available in ${LOCATION}
+	check_sysresccd_files "${LOCATION}"
+	
+	check_sizeof_dev "${partname}"
+	
+	mkdir -p /mnt/usbstick 2>/dev/null
+	if ! mount -t vfat ${partname} /mnt/usbstick
+	then
+		die "cannot mount ${partname} on /mnt/usbstick"
+	fi
+	echo "${partname} successfully mounted on /mnt/usbstick"
+	
+	check_disk_freespace "/mnt/usbstick"
+	
+	echo "cp -v -r --remove-destination ${LOCATION}/* /mnt/usbstick/"	
+	if cp -v -r --remove-destination ${LOCATION}/* /mnt/usbstick/ && sync
+	then
+		echo "Files have been successfully copied to ${partname}"
+	else
+		echo "Cannot copy files to ${partname}"
+	fi
+	
+	if ! ls -l /mnt/usbstick/???linux/???linux.cfg >/dev/null 2>&1
+	then
+		umount /mnt/usbstick
+		die "isolinux/syslinux configuration file not found, cannot continue"
+	fi
+	
+	# check the important files have been copied
+	check_sysresccd_files "/mnt/usbstick"
+	
+	# move isolinux files to syslinux files
+	if [ -f /mnt/usbstick/isolinux/isolinux.cfg ]
+	then
+		[ -d /mnt/usbstick/syslinux ] && rm -rf /mnt/usbstick/syslinux
+		if ! mv /mnt/usbstick/isolinux/isolinux.cfg /mnt/usbstick/isolinux/syslinux.cfg \
+			|| ! mv /mnt/usbstick/isolinux /mnt/usbstick/syslinux
+		then
+			umount /mnt/usbstick
+			die "cannot move isolinux to syslinux, failed"
+		fi
+		sed -i -e 's!/isolinux/!/syslinux/!g' /mnt/usbstick/boot/grub/grub*.cfg
+	fi
+	
+	# add scandelay option which allows the usb devices to be detected
+	sed -i -e 's!scandelay=.!scandelay=5!g' /mnt/usbstick/syslinux/syslinux.cfg
+	
+	umount /mnt/usbstick
+}
+
+do_syslinux()
+{
+	partname="$1"
+	check_valid_partname "${partname}"
+	
+	if [ ! -x "${PROG_SYSLINUX}" ]
+	then
+		die "syslinux not found on your system, please install syslinux first."
+	fi
+	
+	${PROG_SYSLINUX} --install --directory syslinux ${partname}
+	res=$?
+	sync
+	if [ ${res} -eq 0 ]
+	then
+		echo "syslinux has successfully prepared ${partname}"
+	else
+		echo "syslinux failed to prepare ${partname}"
+	fi
+	return ${res}
+}
+
+is_dev_mounted()
+{
+	curdev="$1"
+	
+	if cat /proc/mounts | grep -q "^${curdev}"
+	then
+		return 0
+	else
+		return 1
+	fi
+}
+
+do_dialog()
+{
+    if [ ! -x ${PROG_DIALOG} ]
+    then
+        die "Program dialog not found, cannot run the semi-graphical installation program"
+    fi
+	devsallcnt=0
+	devsmntcnt=0
+	devsokcnt=0
+	for curpath in /sys/block/*
+	do
+		curdev="$(basename ${curpath})"
+		devname="/dev/${curdev}"
+		if is_dev_usb_stick ${curdev}
+		then
+			if [ -n "$(which blockdev)" ]
+			then
+				secsizeofdev="$(blockdev --getsz /dev/${curdev})"
+				mbsizeofdev="$((secsizeofdev/2048))"
+				sizemsg=" and size=${mbsizeofdev}MB"
+			fi
+			echo "Device [${devname}] detected as [${vendor} ${model}] is removable${sizemsg}"
+			if is_dev_mounted "${devname}"
+			then
+				echo "* Device [${devname}] is mounted: cannot use it"
+				devsmnttxt="${devsmnttxt} * Device [${devname}] is mounted: cannot use it"
+				devsmntcnt=$((devsmntcnt+1))
+				devsallcnt=$((devsallcnt+1))
+			else
+				echo "* Device [${devname}] is not mounted"
+				devsoktxt="${devsoktxt} \"${devname}\" \"[${vendor} ${model}] ${sizemsg}\" off"
+				devsokcnt=$((devsokcnt+1))
+				devsallcnt=$((devsallcnt+1))
+			fi
+		fi
+	done
+	if [ ${devsallcnt} -eq 0 ]
+	then
+		echo "No valid USB/Removable device has been detected on your system"
+		return 1	
+	fi
+	if [ ${devsokcnt} -eq 0 ]
+	then
+		echo "All valid USB/Removable devices are currently mounted, unmount these devices first"
+		return 1
+	fi
+
+	if [ ${devsmntcnt} -gt 0 ]
+        then
+		message="${message}The following USB/Removable devices cannot be used:\n"
+		message="${message}${devsmnttxt}\n\n"
+	fi
+	message="${message}Select the USB/Removable devices where you want to install it.\n"
+	message="${message}Files on these devices will be lost if you continue.\n"
+
+	lwselection="/tmp/usb_inst_$$.tmp"
+	[ ! -d /tmp ] && mkdir -p /tmp
+	[ -f ${lwselection} ] && rm -f ${lwselection}
+	selection='${PROG_DIALOG} --backtitle "Select USB/Removable device" --checklist "${message}" 20 70 5'
+	eval "${selection} ${devsoktxt}" 2>$lwselection
+	if [ -s $lwselection ]
+	then
+		status=""
+		output=""
+		echo "" > ${logfile}
+		for devname2 in $(cat $lwselection | tr -d \" | sort)
+		do
+			echo "Installation on ${devname2} at $(date +%Y-%m-%d_%H:%M)" >> ${logfile}
+			status="${status}Installation on ${devname2} in progress\n\n"
+			status="${status}details will be written in ${logfile}\n"
+			dialog_status "${status}"
+			status="${status}* Writing MBR on ${devname2}\n"
+			dialog_status "${status}"
+			do_writembr ${devname2} >> ${logfile} 2>&1
+			[ $? -ne 0 ] && dialog_die "Failed to write the MBR on ${devname2}"
+			sleep 1
+			output="$(find_first_partition ${devname2})\n"
+			devname2="${devname2}$?"
+			dialog_status "${status}"
+			sleep 5
+			status="${status}* Creating filesystem on ${devname2}...\n"
+			dialog_status "${status}"
+			do_format ${devname2} >> ${logfile} 2>&1
+			[ $? -ne 0 ] && dialog_die "Failed to create the filesystem on ${devname2}"
+			status="${status}* Copying files (please wait)...\n"
+			dialog_status "${status}"
+			do_copyfiles ${devname2} >> ${logfile} 2>&1
+			[ $? -ne 0 ] && dialog_die "Failed to copy files on ${devname2}"
+			status="${status}* Installing the boot loader on ${devname2}...\n"
+			dialog_status "${status}"
+			do_syslinux ${devname2} >> ${logfile} 2>&1
+			[ $? -ne 0 ] && dialog_die "Failed to install the boot loader ${devname2}"
+			status="${status}* Installation on ${devname2} successfully completed\n"
+			dialog_status "${status}"
+			sleep 5
+		done
+		${PROG_DIALOG} --title "Success" --msgbox "Installation successfully completed" 10 50
+	fi
+	rm -f $lwselection
+}
+
+dialog_status()
+{
+	${PROG_DIALOG} --infobox "$1" 20 75
+}
+
+dialog_die()
+{
+	readlog="Read the logfile (${logfile}) for more details"
+	${PROG_DIALOG} --title "Error" --msgbox "$1\n${readlog}" 20 70
+	cleanup_tmpdir
+	exit 1
+}
+
+do_listdev()
+{
+	devcnt=0
+	for curpath in /sys/block/*
+	do
+		curdev="$(basename ${curpath})"
+		devname="/dev/${curdev}"
+		if is_dev_usb_stick ${curdev}
+		then
+			if [ -n "$(which blockdev)" ]
+			then
+				secsizeofdev="$(blockdev --getsz /dev/${curdev})"
+				mbsizeofdev="$((secsizeofdev/2048))"
+				sizemsg=" and size=${mbsizeofdev}MB"
+			fi	
+			echo "Device [${devname}] detected as [${vendor} ${model}] is removable${sizemsg}"
+			if is_dev_mounted "${devname}"
+			then
+				echo "Device [${devname}] is mounted"
+			else
+				echo "Device [${devname}] is not mounted"
+			fi
+			find_first_partition ${devname}
+			firstpart="$?"
+			if [ "${firstpart}" != '0' ]
+			then
+				echo "Device [${devname}] has one partition: ${devname}${firstpart}"
+			else
+				echo "Cannot identify which partition to use on ${devname}"
+			fi
+			devcnt=$((devcnt+1))
+		fi
+	done
+	if [ "${devcnt}" = '0' ]
+	then
+		echo "No USB-stick has been detected."
+	fi
+}
+
+## Main
+###############################################################################
+
+export TERMINFO_DIRS=$TERMINFO_DIRS:/lib/terminfo:/etc/terminfo:/usr/share/terminfo
+
+if [ "$(basename $0)" = 'usb_inst.sh' ] && [ -d "${PROGLOC}/usb_inst" ]
+then
+	RUN_FROM_ISOROOT='1'
+
+	# copy programs to a temp dir on the disk since exec from cdrom may fail
+	cleanup_tmpdir
+	mkdir -p ${TMPDIR} || die "Cannot create temp directory: ${TMPDIR}"
+	if ! cp -r ${PROGLOC}/usb_inst/* ${TMPDIR}/
+	then
+		rm -rf ${TMPDIR} 2>/dev/null
+		die "Cannot write programs in temp directory: ${TMPDIR}"
+	else
+		chmod 777 ${TMPDIR}/*
+	fi
+	LOCATION="${PROGLOC}"
+	# programs directly used by this script
+	PROG_PARTED="${TMPDIR}/parted"
+	PROG_INSTMBR="${TMPDIR}/install-mbr"
+	PROG_MKVFATFS="${TMPDIR}/mkfs.vfat"
+	PROG_SYSLINUX="${TMPDIR}/syslinux"
+	PROG_DIALOG="${TMPDIR}/dialog"
+	# syslinux requires mtools
+	ln -s mtools ${TMPDIR}/mcopy
+	ln -s mtools ${TMPDIR}/mmove
+	ln -s mtools ${TMPDIR}/mattrib
+	export PATH=${TMPDIR}:${PATH}
+else
+	LOCATION="/livemnt/boot"
+	PROG_PARTED="$(which parted)"
+	PROG_INSTMBR="$(which install-mbr)"
+	PROG_MKVFATFS="$(which mkfs.vfat)"
+	PROG_SYSLINUX="$(which syslinux)"
+	PROG_DIALOG="$(which dialog)"
+fi
+
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]
+then
+	usage
+	exit 1
+fi
+
+if [ "$(whoami)" != "root" ]
+then
+	help_readman "$0: This script requires root privileges to operate."
+fi
+
+if [ -z "${RUN_FROM_ISOROOT}" ] && ! cat /proc/mounts | awk '{print $2}' | grep -q -F '/memory'
+then
+	help_readman "$0: This script must be executed from SystemRescueCd"
+	exit 1
+fi
+
+if [ -n "${RUN_FROM_ISOROOT}" ] && [ -z "${1}" ]
+then
+    COMMAND='dialog'
+else
+    COMMAND="${1}"
+    shift
+fi
+
+case "${COMMAND}" in
+	listdev)
+		do_listdev
+		;;
+	writembr)
+		do_writembr "$@"
+		;;
+	format)
+		do_format "$@"
+		;;
+	copyfiles)
+		do_copyfiles "$@"
+		;;
+	syslinux)
+		do_syslinux "$@"
+		;;
+	dialog)
+		do_dialog "$@"
+		;;
+	*)
+		usage
+		exit 1
+		;;
+esac
+cleanup_tmpdir
+exit 0
+

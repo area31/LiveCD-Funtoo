@@ -1,0 +1,77 @@
+#!/bin/bash
+
+DIR_MNT="/mnt/custom"
+TMP="/tmp/sysresccd-area31"
+
+
+if [ ! -d ${TMP} ]; then
+	mkdir -p ${TMP}
+fi
+
+rm -rf ${TMP}/SeTdevices
+
+fdisk -l 2> /dev/null | egrep -i 'Linux$' | sort 1> $TMP/SeTplist 2> /dev/null
+
+#LISTA=ls -lG /dev/disk/by-uuid/|grep root |cut -d'/' -f3
+#ls -1 /sys/block/|grep sd[a-z] > $TMP/SeTdevices
+#export $(blkid /dev/sda1|awk '{print $3}'|sed s,'\"',,g)
+
+FILE="${TMP}/list-mount"
+
+# generate partitions list
+fdisk -l |grep -w "83 Linux" |cut -d" " -f1 > ${FILE}
+
+dialog --backtitle "RescueCD Area31 Partition Tools" \
+ --title " SELECT A DEVICE " \
+ --menu "Select the desired device to be MOUNTED at \"${DIR_MNT}\":" \
+10 40 6 $(cat $FILE | cut -d: -f1 | sed s,$," # ",) 2> $TMP/selectHD
+
+if [ ! $? = 0 ]; then
+ rm $TMP/selectHD
+ exit
+fi
+
+
+DEVICE=$( cat $TMP/selectHD )
+rm $TMP/selectHD
+
+dialog --backtitle "RescueCD Area31 Partition Tools" \
+--title " SELECT A MOUNTING METHOD " --menu \
+"Please select a mounting method at \"${DIR_MNT}\":\n" \
+11 80 9 \
+"NO-FSCK" "Mount \"${DEVICE}\" device without integrity check" \
+"FSCK" "Montar \"${DEVICE}\" device with integrity check" \
+2> $TMP/select
+if [ ! $? = 0 ]; then
+ rm $TMP/select
+ exit
+fi
+
+SELECT_CONFIGURE="`cat $TMP/select`"
+rm -f $TMP/select
+if [ "${SELECT_CONFIGURE}" = "NO-FSCK" ]; then
+
+umount -f ${DIR_MNT} &> /dev/null
+
+CHECK_MNT="$(mount | grep -w "${DIR_MNT}" | wc -l)"
+if [ "${CHECK_MNT}" = "0" ]; then
+	mount ${DEVICE} ${DIR_MNT}
+fi
+
+
+
+elif [ "${SELECT_CONFIGURE}" = "FSCK" ]; then
+
+umount -f ${DIR_MNT} &> /dev/null
+fsck -f -y ${DEVICE}
+mount ${DEVICE} ${DIR_MNT}
+
+fi
+
+  echo "Your partition has been activated successfully. The mounting point" > $TMP/customdirmsg
+  echo "/mnt/custom will be used to RescueCD customization." >> $TMP/customdirmsg
+  echo >> $TMP/customdirmsg
+  dialog --title " TARGET /mnt/custom MOUNTED " --exit-label OK --textbox $TMP/customdirmsg 7 72
+  rm $TMP/customdirmsg
+
+sh /usr/share/sysresccd-area31/sysresccd-area31-showmount

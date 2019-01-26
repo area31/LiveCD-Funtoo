@@ -1,0 +1,33 @@
+#!/bin/bash
+
+DIR_MNT="/mnt/custom"
+DIR_SYSTEM="${DIR_MNT}/customcd/files"
+TMP="/tmp/sysresccd-area31"
+
+if [ ! -d ${TMP} ]; then
+	mkdir -p ${TMP}
+fi
+
+# Unmount CHROOT environment
+cd ${DIR_SYSTEM} &> /dev/null
+umount proc sys &> /dev/null
+umount -l dev &> /dev/null
+cd
+umount ${DIR_SYSTEM}/var/cache/portage ${DIR_SYSTEM}/var/git &> /dev/null
+
+# generate mounted partitions list
+mount|grep -w ${DIR_SYSTEM}|cut -d" " -f1 > ${TMP}/list-mount &> /dev/null
+for disk in $(ls -1 /sys/block/|grep sd[a-z]); do
+	mount |grep "/dev/${disk}" |cut -d" " -f1 >> ${TMP}/list-mount &> /dev/null
+done
+
+while read device;do
+	umount -f ${device} &> /dev/null
+done < ${TMP}/list-mount
+
+umount -f ${DIR_MNT}  &> /dev/null
+
+
+for partition in $(mount|egrep -wv '/livemnt/boot|/livemnt/squashfs|/livemnt/memory|/livemnt/tftpmem|/tftpboot|/run|/dev/shmZ/sys/fs/cgroupZ/tmp|/sys|\/|/dev/mqueue|/dev/shm|/dev/pts|overlay|udev on /dev type|proc on /proc type proc|/proc/sys/fs/binfmt_misc|tmpfs on /tmp type tmpfs'|awk '{print $3}'); do
+	umount -v ${partition}
+done

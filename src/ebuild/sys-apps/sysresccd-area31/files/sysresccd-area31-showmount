@@ -1,0 +1,16 @@
+#!/bin/sh
+
+DIR_MNT="/mnt/custom"
+TMP="/tmp/sysresccd-area31"
+
+if [ ! -d ${TMP} ]; then
+	mkdir -p ${TMP}
+fi
+
+echo -e "\n# Mounted partitions:\n" > ${TMP}/disks.txt
+df -hT|egrep -wv '/livemnt|udev|overlay|none|shm|tmpfs' >> ${TMP}/disks.txt
+
+echo -e "\n\n\n\n\n\n\n\n\n# Active SWAP:\n" >> ${TMP}/disks.txt
+cat /proc/swaps >> ${TMP}/disks.txt
+
+dialog --title "RescueCD Area31 Tools" --exit-label OK --textbox "${TMP}/disks.txt" 28 95
