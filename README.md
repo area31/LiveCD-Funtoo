@@ -12,7 +12,6 @@ Contributors:
 
 ~~~~
 Rafael Tudela aka y0ct0
-Tiago Silva aka M0rg4r37h
 Lucas Coutinho Silva aka Otakku
 ~~~~
 
