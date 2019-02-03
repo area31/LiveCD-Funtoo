@@ -140,12 +140,18 @@ while [ 0 ]; do
 	if [ "${MAINSELECT}" = "EXTRACT" ]; then
 		var=0
 		var="$(mount | grep -w "${DIR_MNT}" | wc -l)"
+		CUSTOMCD_DIR="${DIR_MNT}/customcd"
 
 		if [ "$var" -ne 0 ];then
-			dialog --title " RescueCD Area31 Tools " --no-label Cancel --yes-label Continue --yesno \
-			"\nExtract sysrcd.dat to /mnt/custom,\nPress [ENTER] to continue..." 8 65
-			if [ "$?" -eq 0 ]; then
-				/usr/sbin/sysresccd-custom extract
+			if [ -d "${DIR_MNT}/customcd" ]; then
+				dialog --title " RescueCD Area31 Tools " --msgbox \
+				"\nDirectory ${DIR_MNT}/customcd exist,\nExtract aborted" 8 65
+			else
+				dialog --title " RescueCD Area31 Tools " --no-label Cancel --yes-label Continue --yesno \
+				"\nExtract sysrcd.dat to /mnt/custom,\nPress [ENTER] to continue..." 8 65
+				if [ "$?" -eq 0 ]; then
+					/usr/sbin/sysresccd-custom extract
+				fi
 			fi
 		else
 			dialog --title " ERROR CONFIGURING RESCUECD " --msgbox "\n\
