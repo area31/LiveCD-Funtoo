@@ -203,6 +203,7 @@ while [ 0 ]; do
 			dialog --title " RescueCD Area31 Tools " --no-label Cancel --yes-label Continue --yesno \
 			"\nMake new ISO on /mnt/custom/customcd/isofile,\nPress [ENTER] to continue..." 8 55
 			if [ "$?" -eq 0 ]; then
+				clear
 				sh /usr/share/sysresccd-area31/sysresccd-area31-targets make-iso
 			fi
 		else
