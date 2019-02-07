@@ -75,6 +75,7 @@ while [ 0 ]; do
 	# HELP
 
 	if [ "${MAINSELECT}" = "HELP" ]; then
+		clear
 		sh /usr/share/sysresccd-area31/sysresccd-area31-help
 	fi
 
@@ -82,6 +83,7 @@ while [ 0 ]; do
 	# SHOW
 
 	if [ "${MAINSELECT}" = "SHOW" ]; then
+		clear
 		sh /usr/share/sysresccd-area31/sysresccd-area31-showmount
 	fi
 
@@ -94,6 +96,7 @@ while [ 0 ]; do
 		1. Create at least one Linux partition.\n\
 		2. If possible, create a SWAP partition (recommended).\n\n\
 		Press [ENTER] to continue" 12 60
+		clear
 		sh /usr/share/sysresccd-area31/sysresccd-area31-partition
 	fi
 
@@ -103,6 +106,7 @@ while [ 0 ]; do
 	if [ "${MAINSELECT}" = "FORMAT" ]; then
 		dialog --title " RescueCD Area31 Tools " --msgbox "\n Format partition (required to chroot),\n\
 		Press [ENTER] to continue..." 8 55
+		clear
 		sh /usr/share/sysresccd-area31/sysresccd-area31-format
 	fi
 
@@ -112,6 +116,7 @@ while [ 0 ]; do
 	if [ "${MAINSELECT}" = "KEYMAP" ]; then
 		dialog --title " RescueCD Area31 Tools " --msgbox "\n Configure keymap,\n\
 		Press [ENTER] to continue..." 8 42
+		clear
 		sh /usr/share/sysresccd-area31/sysresccd-area31-keymap
 	fi
 
@@ -122,6 +127,7 @@ while [ 0 ]; do
 	if [ "${MAINSELECT}" = "ADD-SWAP" ]; then
 		dialog --title " RescueCD Area31 Tools " --msgbox "\n Configure SWAP,\n\
 		Press [ENTER] to continue..." 8 42
+		clear
 		sh /usr/share/sysresccd-area31/sysresccd-area31-swap
 	fi
 
@@ -131,6 +137,7 @@ while [ 0 ]; do
 	if [ "${MAINSELECT}" = "ADD-TARGET" ]; then
 		dialog --title " RescueCD Area31 Tools " --msgbox "\n Mount disk for chroot environment,\n\
 		Press [ENTER] to continue..." 8 55
+		clear
 		sh /usr/share/sysresccd-area31/sysresccd-area31-targets mount-disk
 	fi
 
@@ -177,6 +184,7 @@ while [ 0 ]; do
 			dialog --title " RescueCD Area31 Tools " --no-label Cancel --yes-label Continue --yesno \
 			"CHROOT into \"/mnt/custom\",\nPress [ENTER] to continue..." 8 55
 			if [ "$?" -eq 0 ]; then
+				clear
 				sh /usr/share/sysresccd-area31/sysresccd-area31-targets make-chroot
 			fi
 		else
@@ -225,6 +233,7 @@ while [ 0 ]; do
 	if [ "${MAINSELECT}" = "UMOUNT" ]; then
 		dialog --title " RescueCD Area31 Tools " --msgbox "\n Umount all partitions, including '/mnt/custom'!,\n\
 		Press [ENTER] to continue..." 8 62
+		clear
 		sh /usr/share/sysresccd-area31/sysresccd-area31-showmount
 		sh /usr/share/sysresccd-area31/sysresccd-area31-targets umount-disk
 		sh /usr/share/sysresccd-area31/sysresccd-area31-showmount
@@ -232,7 +241,7 @@ while [ 0 ]; do
 
 	if [ "${MAINSELECT}" = "EXIT" ]; then
 		RESCUECD_MOUNTED=$( mount |grep -w /mnt/custom|wc -l  )
-
+		clear
 		sh /usr/share/sysresccd-area31/sysresccd-area31-targets umount-chroot
 		# umount all partitions
 		if [ "${RESCUECD_MOUNTED}" -ne 0 ];then
