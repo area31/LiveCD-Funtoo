@@ -140,10 +140,10 @@ while [ 0 ]; do
 	if [ "${MAINSELECT}" = "EXTRACT" ]; then
 		var=0
 		var="$(mount | grep -w "${DIR_MNT}" | wc -l)"
-		CUSTOMCD_DIR="${DIR_MNT}/customcd"
+		CUSTOMCD_DIR="${DIR_MNT}/customcd/files/etc/area31"
 
 		if [ "$var" -ne 0 ];then
-			if [ -d "${DIR_MNT}/customcd" ]; then
+			if [ -d "${CUSTOMCD_DIR}" ]; then
 				dialog --title " RescueCD Area31 Tools " --msgbox \
 				"\nDirectory ${DIR_MNT}/customcd exist,\nExtract aborted" 8 65
 			else
