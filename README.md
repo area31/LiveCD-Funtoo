@@ -55,10 +55,10 @@ https://www.funtoo.org/Make_your_own_LiveCD_using_Funtoo_Linux
 ~~~~
 
 
-# Get Área31 Hackerspace kernel config (sys-kernel/gentoo-sources):
+# Get Área31 Hackerspace kernel config (sys-kernel/area31-sources):
 
 ~~~~
-# wget https://area31.net.br/downloads/ebuilds/releases/config-4.20.4-rescuecd-funtoo-overlayfs-area31-5.0
+# wget https://raw.githubusercontent.com/area31/LiveCD-Funtoo/master/kernel/config-4.20.7-gentoo-area31-hackerspace
 ~~~~
 
 
