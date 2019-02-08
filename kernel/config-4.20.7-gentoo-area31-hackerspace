@@ -1,13 +1,13 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/x86 4.20.5-gentoo Kernel Configuration
+# Linux/x86 4.20.7-gentoo Kernel Configuration
 #
 
 #
-# Compiler: gcc (Funtoo 7.4.1-r6) 7.4.1 20181207
+# Compiler: gcc (Funtoo 8.2.1-r6) 8.2.1 20181207
 #
 CONFIG_CC_IS_GCC=y
-CONFIG_GCC_VERSION=70401
+CONFIG_GCC_VERSION=80201
 CONFIG_CLANG_VERSION=0
 CONFIG_IRQ_WORK=y
 CONFIG_BUILDTIME_EXTABLE_SORT=y
