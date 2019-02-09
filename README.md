@@ -14,6 +14,7 @@ Contributors:
 Rafael Tudela aka y0ct0
 Lucas Coutinho Silva aka Otakku
 Gabriel Patrício aka yaszu
+Humberto Pires Marques aka warrior-graph
 ~~~~
 
 ================
