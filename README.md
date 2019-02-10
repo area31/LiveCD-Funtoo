@@ -21,10 +21,10 @@ Humberto Pires Marques aka warrior-graph
 
 # Get the oficial LiveCD created by Área31 Hackerspace
 
-http://192.99.210.63/funtoo-livecd-area31-5.0-pre-release.iso
+http://192.99.210.63/funtoo-livecd-area31-5.0-test.iso
 
 ~~~~
-MD5: a95540a84f75678a83288df12ad937e1
+MD5: 7dc5a0dbea55cf81a4dabfa770d209e8
 ~~~~
 
 
